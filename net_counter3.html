@@ -2,11 +2,11 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>網の直線検出（2枚目完全再現版）</title>
+    <title>網の直線検出（クラスタリング修正版）</title>
     <script async src="https://docs.opencv.org/4.x/opencv.js" type="text/javascript"></script>
 </head>
 <body>
-    <h2>網の検出（ハフ変換不使用・忠実再現プロトタイプ）</h2>
+    <h2>網の直線検出（ダブリ徹底排除版）</h2>
     <input type="file" id="fileInput" accept="image/*"><br><br>
     
     <div>
@@ -28,7 +28,7 @@
                     ctx.drawImage(img, 0, 0);
                     
                     if (typeof cv !== 'undefined' && cv.Mat) { 
-                        processImageFaithful(); 
+                        processImageFinal(); 
                     } else {
                         alert("OpenCV.js読み込み中...");
                     }
@@ -38,88 +38,138 @@
             reader.readAsDataURL(e.target.files[0]);
         });
 
-        function processImageFaithful() {
+        function processImageFinal() {
             let src = cv.imread('canvasInput');
             let hsv = new cv.Mat();
             let mask = new cv.Mat();
             let dst = src.clone();
 
-            // 1. グリーンバック除去（二二値化）
+            // 1. グリーンバック除去
             cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
             cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
             let lowGreen = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [35, 35, 35, 0]);
             let highGreen = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [90, 255, 255, 255]);
             cv.inRange(hsv, lowGreen, highGreen, mask);
-            cv.bitwise_not(mask, mask); // 網を白（255）、背景を黒（0）に
+            cv.bitwise_not(mask, mask);
 
-            // 2. クロージングで網のねじれ穴を完全に埋めて「1本の滑らかな太い紐」にする
-            let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
+            // 2. クロージング（線の中の細かい穴を埋める）
+            let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
             cv.morphologyEx(mask, mask, cv.MORPH_CLOSE, kernel);
 
-            // 3. 【最重要】輪郭抽出（Contours）による網のコード単体の分離
-            // ハフ変換を一切使わず、つながっている「白い紐のかたまり」として網を認識します
-            let contours = new cv.MatVector();
-            let hierarchy = new cv.Mat();
-            cv.findContours(mask, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_NONE);
+            // 3. ハフ変換（細切れになってもいいので、弛んだカーブを網羅的に拾う）
+            let lines = new cv.Mat();
+            // 閾値: 35, 最小線長: 40, 最大隙間: 60
+            cv.HoughLinesP(mask, lines, 1, Math.PI / 180, 35, 40, 60);
 
-            // 4. 抽出した「紐」ごとに、端から端まで突き抜ける1本の近似直線を計算
-            for (let i = 0; i < contours.size(); ++i) {
-                let cnt = contours.get(i);
-                let area = cv.contourArea(cnt);
+            // 青（右肩上がり）と オレンジ（右肩下がり）のグループを最初に完全セパレート
+            let blueLines = [];
+            let orangeLines = [];
 
-                // 小さすぎるノイズ（ゴミ）は無視（面積が300ピクセル未満は除外）
-                if (area < 300) { cnt.delete(); continue; }
+            let midY = Math.round(src.rows / 2);
 
-                // fitLineを使って、この網の輪郭の点群に最も綺麗にフィットする直線（方向ベクトル）を計算
-                let lineMat = new cv.Mat();
-                cv.fitLine(cnt, lineMat, cv.DIST_L2, 0, 0.01, 0.01);
+            // 4. 一次振り分けと「画像中央のX座標（centerX）」の計算
+            for (let i = 0; i < lines.rows; ++i) {
+                let x1 = lines.data32S[i * 4];
+                let y1 = lines.data32S[i * 4 + 1];
+                let x2 = lines.data32S[i * 4 + 2];
+                let y2 = lines.data32S[i * 4 + 3];
 
-                // 直線のパラメータ（方向ベクトルvx, vy と 通る点x0, y0）を取得
-                let vx = lineMat.data32F[0];
-                let vy = lineMat.data32F[1];
-                let x0 = lineMat.data32F[2];
-                let y0 = lineMat.data32F[3];
+                let angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
+                if (angle > 90) angle -= 180;
+                if (angle < -90) angle += 180;
 
-                // 傾きを計算
-                let slope = vy / vx;
+                // 縦線・横線のノイズカット
+                if (Math.abs(angle) < 50 || Math.abs(angle) > 85) continue;
 
-                // 横線や縦線のノイズ（画像の端の影など）をカット（斜め45〜85度のみを対象にする）
-                let angle = Math.atan2(vy, vx) * 180 / Math.PI;
-                if (Math.abs(angle) < 45 || Math.abs(angle) > 85) {
-                    lineMat.delete(); cnt.delete(); continue;
-                }
+                let a = (x2 - x1) !== 0 ? (y2 - y1) / (x2 - x1) : 9999;
+                let b = y1 - a * x1;
+                let centerX = (midY - b) / a;
 
-                // 切片を計算 (y = ax + b -> b = y0 - slope * x0)
-                let b = y0 - slope * x0;
-
-                // 画像の最上部（y=0）と最下部（y=rows）のX座標を計算して、端から端まで突き抜く
-                let startY = 0;
-                let startX = Math.round((startY - b) / slope);
-                let endY = dst.rows;
-                let endX = Math.round((endY - b) / slope);
-
-                // 5. 2枚目の理想図通りに完璧に色分け（右肩下がり＝オレンジ、右肩上がり＝青）
-                let color;
-                if (slope > 0) {
-                    color = new cv.Scalar(255, 140, 0, 255); // オレンジ
+                // 傾きの正負で完全に配列を分ける（これで青とオレンジが絶対混ざらない）
+                if (a < 0) {
+                    blueLines.push({ x1, y1, x2, y2, a, b, centerX });
                 } else {
-                    color = new cv.Scalar(0, 100, 255, 255);  // 青
+                    orangeLines.push({ x1, y1, x2, y2, a, b, centerX });
                 }
-
-                // 2枚目のように、網1本に対して完全に独立した1本の線を引く
-                cv.line(dst, new cv.Point(startX, startY), new cv.Point(endX, endY), color, 4);
-
-                lineMat.delete();
-                cnt.delete();
             }
 
-            // 結果を表示
+            // 本格的なクラスタリング（近接する線を1本にマージする関数）
+            function clusterAndFit(targetLines, threshold) {
+                let mergedGroups = [];
+
+                targetLines.forEach(line => {
+                    let matchedGroup = null;
+                    for (let group of mergedGroups) {
+                        // グループの平均centerXとの距離を比較
+                        if (Math.abs(group.avgCenterX - line.centerX) < threshold) {
+                            matchedGroup = group;
+                            break;
+                        }
+                    }
+
+                    if (matchedGroup) {
+                        matchedGroup.lines.push(line);
+                        // 平均中心位置を更新
+                        let sumX = 0;
+                        matchedGroup.lines.forEach(l => sumX += l.centerX);
+                        matchedGroup.avgCenterX = sumX / matchedGroup.lines.length;
+                    } else {
+                        mergedGroups.push({
+                            avgCenterX: line.centerX,
+                            lines: [line]
+                        });
+                    }
+                });
+
+                return mergedGroups;
+            }
+
+            // 【重要】ダブリを殺すためのクラスタリング実行（距離閾値は実績ベースの60に設定）
+            const CLUSTER_THRESHOLD = 60;
+            let blueGroups = clusterAndFit(blueLines, CLUSTER_THRESHOLD);
+            let orangeGroups = clusterAndFit(orangeLines, CLUSTER_THRESHOLD);
+
+            // 5. 最小二乗法で1本の直線にして描画する関数
+            function drawGroupedLines(groups, isOrange) {
+                groups.forEach(group => {
+                    let points = [];
+                    group.lines.forEach(l => {
+                        points.push({ x: l.x1, y: l.y1 });
+                        points.push({ x: l.x2, y: l.y2 });
+                    });
+
+                    if (points.length < 2) return;
+
+                    // 最小二乗法によるフィット
+                    let n = points.length;
+                    let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+                    points.forEach(p => {
+                        sumX += p.x; sumY += p.y;
+                        sumXY += p.x * p.y; sumXX += p.x * p.x;
+                    });
+
+                    let fitA = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+                    let fitB = (sumY - fitA * sumX) / n;
+
+                    let startY = 0;
+                    let startX = Math.round((startY - fitB) / fitA);
+                    let endY = dst.rows;
+                    let endX = Math.round((endY - fitB) / fitA);
+
+                    let color = isOrange ? new cv.Scalar(255, 140, 0, 255) : new cv.Scalar(0, 100, 255, 255);
+                    cv.line(dst, new cv.Point(startX, startY), new cv.Point(endX, endY), color, 3);
+                });
+            }
+
+            // 青グループとオレンジグループをそれぞれ描画
+            drawGroupedLines(blueGroups, false);
+            drawGroupedLines(orangeGroups, true);
+
             cv.imshow('canvasOutput', dst);
 
             // メモリ解放
             src.delete(); hsv.delete(); mask.delete(); dst.delete();
-            contours.delete(); hierarchy.delete(); kernel.delete();
-            lowGreen.delete(); highGreen.delete();
+            lines.delete(); kernel.delete(); lowGreen.delete(); highGreen.delete();
         }
     </script>
 </body>
