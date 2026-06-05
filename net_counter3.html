@@ -2,11 +2,11 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>網の直線検出テスト（修正版）</title>
+    <title>網の直線検出テスト（完成版）</title>
     <script async src="https://docs.opencv.org/4.x/opencv.js" type="text/javascript"></script>
 </head>
 <body>
-    <h2>網の直線検出プロトタイプ</h2>
+    <h2>網の直線検出プロトタイプ（完成版）</h2>
     <input type="file" id="fileInput" accept="image/*"><br><br>
     
     <div>
@@ -53,20 +53,23 @@
             cv.inRange(hsv, lowGreen, highGreen, mask);
             cv.bitwise_not(mask, mask); // 網を白に
 
-            // 2. クロージング処理で途切れを結合
-            let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
-            cv.morphologyEx(mask, mask, cv.MORPH_CLOSE, kernel);
+            // 2. クロージング＆オープニング（ねじれ模様を潰して「滑らかな一本の棒」にする）
+            let kernel3 = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
+            let kernel5 = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
+            cv.morphologyEx(mask, mask, cv.MORPH_CLOSE, kernel5); // 少し強めに穴埋め
+            cv.morphologyEx(mask, mask, cv.MORPH_OPEN, kernel3);  // 飛び出たノイズを除去
 
-            // 3. パラメータを調整したハフ変換（最初の安定していた設定ベース）
+            // 3. パラメータを調整したハフ変換
             let lines = new cv.Mat();
-            cv.HoughLinesP(mask, lines, 1, Math.PI / 180, 60, 80, 80);
+            // 閾値: 40, 最小線長: 60, 最大隙間: 100
+            cv.HoughLinesP(mask, lines, 1, Math.PI / 180, 40, 60, 100);
 
-            // 4. 直線のグルーピング（1本化ロジック）
+            // 4. 直線のグルーピング
             let lineGroup = [];
-            const ANGLE_THRESHOLD = 6;   // 同じ線とみなす傾きの許容差（度）
-            const INTERCEPT_THRESHOLD = 60; // 【修正】画像の中央の高さ（y = rows/2）を通るx座標の許容ズレ（ピクセル）
+            const ANGLE_THRESHOLD = 8;     // 許容する角度差
+            const INTERCEPT_THRESHOLD = 50; // 実績値（60）をベースに微調整
 
-            let midY = Math.round(src.rows / 2); // 判定の基準にする画像中央のY座標
+            let midY = Math.round(src.rows / 2);
 
             for (let i = 0; i < lines.rows; ++i) {
                 let x1 = lines.data32S[i * 4];
@@ -74,24 +77,23 @@
                 let x2 = lines.data32S[i * 4 + 2];
                 let y2 = lines.data32S[i * 4 + 3];
 
-                // 傾き(a)と切片(b)を計算 (y = ax + b)
                 let angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
                 if (angle > 90) angle -= 180;
                 if (angle < -90) angle += 180;
 
-                // 明らかなノイズ（真横や真縦の線）をカット
-                if (Math.abs(angle) < 45 || Math.abs(angle) > 85) continue;
+                // 網のメイン角度（約65度〜80度）以外の細かなねじれノイズをカット
+                if (Math.abs(angle) < 55 || Math.abs(angle) > 85) continue;
 
                 let a = (x2 - x1) !== 0 ? (y2 - y1) / (x2 - x1) : 9999;
                 let b = y1 - a * x1;
-                
-                // 【解決策】符号の影響を受けない「画像中央を横切るときのx座標」をグループ判定の基準にする
                 let centerX = (midY - b) / a;
 
-                // 既存のグループに統合できるかチェック
                 let matched = false;
                 for (let group of lineGroup) {
-                    if (Math.abs(group.angle - angle) < ANGLE_THRESHOLD && Math.abs(group.centerX - centerX) < INTERCEPT_THRESHOLD) {
+                    // 【改善】「本来のコードの傾き（青/オレンジ）」が混ざらないよう、角度の符号（正負）が一致していることも条件に追加
+                    let isSameSign = (group.angle >= 0 && angle >= 0) || (group.angle < 0 && angle < 0);
+
+                    if (isSameSign && Math.abs(group.angle - angle) < ANGLE_THRESHOLD && Math.abs(group.centerX - centerX) < INTERCEPT_THRESHOLD) {
                         group.lines.push({x1, y1, x2, y2, a, b});
                         matched = true;
                         break;
@@ -105,7 +107,6 @@
 
             // 5. 統合された線を描画
             lineGroup.forEach(group => {
-                // グループ内のすべての線の平均の傾きと切片を算出
                 let sumA = 0, sumB = 0;
                 group.lines.forEach(l => {
                     sumA += l.a;
@@ -114,25 +115,23 @@
                 let avgA = sumA / group.lines.length;
                 let avgB = sumB / group.lines.length;
 
-                // 画像の最上部(y=0)と最下部(y=rows)でのx座標を計算
                 let startY = 0;
                 let startX = Math.round((startY - avgB) / avgA);
                 let endY = dst.rows;
                 let endX = Math.round((endY - avgB) / avgA);
 
-                // 角度で色分け（青 or オレンジ）
-                let color = (group.angle > 0) ? new cv.Scalar(255, 165, 0, 255) : new cv.Scalar(0, 100, 255, 255);
+                // 角度による色分け（今回の画像に合わせて最適化）
+                // 実際に描画される直線の傾き（avgA）をベースに判定
+                let color = (avgA > 0) ? new cv.Scalar(255, 165, 0, 255) : new cv.Scalar(0, 100, 255, 255);
 
-                // 1本の綺麗な直線としてブチ抜いて描画
                 cv.line(dst, new cv.Point(startX, startY), new cv.Point(endX, endY), color, 3);
             });
 
-            // 結果を表示
             cv.imshow('canvasOutput', dst);
 
             // メモリ解放
             src.delete(); hsv.delete(); mask.delete(); dst.delete();
-            lines.delete(); kernel.delete(); lowGreen.delete(); highGreen.delete();
+            lines.delete(); kernel3.delete(); kernel5.delete(); lowGreen.delete(); highGreen.delete();
         }
     </script>
 </body>
