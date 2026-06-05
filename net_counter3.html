@@ -2,11 +2,11 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>網の直線検出テスト（原点回帰版）</title>
+    <title>網の直線検出テスト</title>
     <script async src="https://docs.opencv.org/4.x/opencv.js" type="text/javascript"></script>
 </head>
 <body>
-    <h2>網の直線検出プロトタイプ（原点回帰）</h2>
+    <h2>網の直線検出プロトタイプ</h2>
     <input type="file" id="fileInput" accept="image/*"><br><br>
     
     <div>
@@ -26,104 +26,64 @@
                     imgElement.width = img.width;
                     imgElement.height = img.height;
                     ctx.drawImage(img, 0, 0);
-                    
-                    if (typeof cv !== 'undefined' && cv.Mat) { 
-                        processImageFaithful(); 
-                    } else {
-                        alert("OpenCV.js読み込み中...");
-                    }
+                    // OpenCV.jsの準備ができていれば処理を実行
+                    if (cv.Mat) { processImage(); }
                 }
                 img.src = event.target.result;
             }
             reader.readAsDataURL(e.target.files[0]);
         });
 
-        function processImageFaithful() {
+        function processImage() {
+            // 1. 画像の読み込み
             let src = cv.imread('canvasInput');
             let hsv = new cv.Mat();
             let mask = new cv.Mat();
             let dst = src.clone();
 
-            // STEP 1 & 2: 背景のグリーンバックを狙い撃ちしてワイヤを抽出
+            // 2. 緑色の除去 (HSVでの二値化)
             cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
             cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
             
-            // 糸の光沢を無視するため、明度(V)の下限を20に下げて背景の影までしっかり緑として拾う
-            let lowGreen = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [35, 40, 20, 0]);
-            let highGreen = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [90, 255, 255, 255]);
+            // 緑色の範囲を指定（環境に合わせて要調整）
+            let lowGreen = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [35, 40, 40, 0]);
+            let highGreen = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [85, 255, 255, 255]);
             cv.inRange(hsv, lowGreen, highGreen, mask);
-            cv.bitwise_not(mask, mask); // 反転して網を白にする
+            
+            // 反転して「網だけが白(255)」の画像を作る
+            cv.bitwise_not(mask, mask);
 
-            // クロージング処理でワイヤ内部の細かい穴を埋める
-            let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
-            cv.morphologyEx(mask, mask, cv.MORPH_CLOSE, kernel);
-
-            // ご提案のCannyエッジ検出を挿入して、ハフ変換に渡る線をシャープにする
-            cv.Canny(mask, mask, 50, 150);
-
-            // ハフ変換（1発目の安定設定に近いパラメータ）
+            // 3. 直線検出 (確率的ハフ変換)
             let lines = new cv.Mat();
-            cv.HoughLinesP(mask, lines, 1, Math.PI / 180, 50, 80, 60);
+            // 引数: 入力, 出力, 距離分解能, 角度分解能, 閾値, 最小線長, 最大線隙
+            cv.HoughLinesP(mask, lines, 1, Math.PI / 180, 100, 200, 20);
 
-            // STEP 3 & 4: ／方向・＼方向の系列抽出（1発目のシンプルロジックベース）
-            let lineGroup = [];
-            const ANGLE_THRESHOLD = 5;      // 同じ線とみなす傾きの許容差（度）
-            const INTERCEPT_THRESHOLD = 60;  // 実績ベースの距離の許容差（ピクセル）
-
+            // 4. 直線の描画と色分け
             for (let i = 0; i < lines.rows; ++i) {
                 let x1 = lines.data32S[i * 4];
                 let y1 = lines.data32S[i * 4 + 1];
                 let x2 = lines.data32S[i * 4 + 2];
                 let y2 = lines.data32S[i * 4 + 3];
-
-                // 傾き(a)と切片(b)を計算 (y = ax + b)
+                
+                // 傾きを計算してグループ分け
                 let angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
-                let a = (x2 - x1) !== 0 ? (y2 - y1) / (x2 - x1) : 9999;
-                let b = y1 - a * x1;
-
-                // 1発目のように、シンプルに「最初に見つかった代表線の数式」をベースにグループ化
-                let matched = false;
-                for (let group of lineGroup) {
-                    if (Math.abs(group.angle - angle) < ANGLE_THRESHOLD && Math.abs(group.b - b) < INTERCEPT_THRESHOLD) {
-                        group.lines.push({x1, y1, x2, y2});
-                        matched = true;
-                        break;
-                    }
+                
+                let color;
+                if (angle > 0) {
+                    color = new cv.Scalar(255, 165, 0, 255); // オレンジ (右肩下がり)
+                } else {
+                    color = new cv.Scalar(0, 0, 255, 255);   // 青 (右肩上がり)
                 }
-
-                if (!matched) {
-                    lineGroup.push({ angle, a, b, lines: [{x1, y1, x2, y2}] });
-                }
+                
+                cv.line(dst, new cv.Point(x1, y1), new cv.Point(x2, y2), color, 3);
             }
 
-            // ログの出力（確認用）
-            console.log("ハフ変換で検出された総線数:", lines.rows);
-            console.log("抽出された系列の総数（青＋オレンジ）:", lineGroup.length);
-
-            // 描画処理：画像の最上部から最下部までブチ抜く直線にする
-            lineGroup.forEach(group => {
-                // 1発目で最も描画が綺麗だった「最初の1本の数式」をそのまま代表として採用
-                let avgA = group.a;
-                let avgB = group.b;
-
-                let startY = 0;
-                let startX = Math.round((startY - avgB) / avgA);
-                let endY = dst.rows;
-                let endX = Math.round((endY - avgB) / avgA);
-
-                // 角度で綺麗に色分け（オレンジ or 青）
-                let color = (group.angle > 0) ? new cv.Scalar(255, 140, 0, 255) : new cv.Scalar(0, 100, 255, 255);
-
-                // 1本の直線として力強く描画
-                cv.line(dst, new cv.Point(startX, startY), new cv.Point(endX, endY), color, 3);
-            });
-
-            // 結果を表示
+            // 結果の表示
             cv.imshow('canvasOutput', dst);
 
             // メモリ解放
             src.delete(); hsv.delete(); mask.delete(); dst.delete();
-            lines.delete(); kernel.delete(); lowGreen.delete(); highGreen.delete();
+            lines.delete(); lowGreen.delete(); highGreen.delete();
         }
     </script>
 </body>
