@@ -123,8 +123,8 @@
 
     <div class="psec">▸ ワイヤ色プリセット</div>
     <div id="wire-mode">
-      <button class="wm-btn" onclick="applyPreset('green')">緑BG黒線</button>
-      <button class="wm-btn active" onclick="applyPreset('yellow')">黄BG茶線</button>
+      <button class="wm-btn active" onclick="applyPreset('green')">緑BG黒線</button>
+      <button class="wm-btn" onclick="applyPreset('yellow')">黄BG茶線</button>
       <button class="wm-btn" onclick="applyPreset('white')">白BG黒線</button>
       <button class="wm-btn" onclick="applyPreset('custom')">カスタム</button>
     </div>
@@ -132,23 +132,23 @@
     <div class="psec">▸ 背景色検出 (HSV)</div>
     <div class="pr">
       <span class="pl">背景H下限</span>
-      <input type="range" id="p-hmin" min="0" max="180" value="20">
-      <span class="pv" id="v-hmin">20</span>
+      <input type="range" id="p-hmin" min="0" max="180" value="85">
+      <span class="pv" id="v-hmin">85</span>
     </div>
     <div class="pr">
       <span class="pl">背景H上限</span>
-      <input type="range" id="p-hmax" min="0" max="180" value="45">
-      <span class="pv" id="v-hmax">45</span>
+      <input type="range" id="p-hmax" min="0" max="180" value="165">
+      <span class="pv" id="v-hmax">165</span>
     </div>
     <div class="pr">
       <span class="pl">彩度下限%</span>
-      <input type="range" id="p-smin" min="5" max="90" value="35">
-      <span class="pv" id="v-smin">35</span>
+      <input type="range" id="p-smin" min="5" max="90" value="20">
+      <span class="pv" id="v-smin">20</span>
     </div>
     <div class="pr">
       <span class="pl">明度下限%</span>
-      <input type="range" id="p-vmin" min="5" max="90" value="30">
-      <span class="pv" id="v-vmin">30</span>
+      <input type="range" id="p-vmin" min="5" max="90" value="15">
+      <span class="pv" id="v-vmin">15</span>
     </div>
 
     <div class="psec">▸ ワイヤ検出 (Hough)</div>
@@ -171,8 +171,8 @@
     <div class="psec">▸ 交点検出</div>
     <div class="pr">
       <span class="pl">重複統合距離px</span>
-      <input type="range" id="p-mdst" min="2" max="50" value="14">
-      <span class="pv" id="v-mdst">14</span>
+      <input type="range" id="p-mdst" min="2" max="50" value="8">
+      <span class="pv" id="v-mdst">8</span>
     </div>
 
     <div class="psec">▸ 行クラスタリング</div>
@@ -230,9 +230,9 @@
 //  パラメータ
 // ══════════════════════════════════
 const P = {
-  hMin:20, hMax:45, sMin:35, vMin:30,  // 背景HSV（黄色デフォルト）
+  hMin:85, hMax:165, sMin:20, vMin:15,  // 背景HSV（グリーンバック）
   houghThr:15, angleTol:20, maxLines:30,
-  mergeDist:14,
+  mergeDist:8,
   rowTol:10, rowMin:3,
   trigRows:3, unlockRows:1,
 };
