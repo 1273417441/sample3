@@ -2,11 +2,11 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>網の直線検出テスト</title>
+    <title>網の直線検出・周期推定テスト</title>
     <script async src="https://docs.opencv.org/4.x/opencv.js" type="text/javascript"></script>
 </head>
 <body>
-    <h2>網の直線検出プロトタイプ</h2>
+    <h2>網の直線検出プロトタイプ（STEP5: 周期推定まで実装）</h2>
     <input type="file" id="fileInput" accept="image/*"><br><br>
     
     <div>
@@ -26,64 +26,130 @@
                     imgElement.width = img.width;
                     imgElement.height = img.height;
                     ctx.drawImage(img, 0, 0);
-                    // OpenCV.jsの準備ができていれば処理を実行
-                    if (cv.Mat) { processImage(); }
+                    
+                    if (typeof cv !== 'undefined' && cv.Mat) { 
+                        processImageFaithful(); 
+                    } else {
+                        alert("OpenCV.js読み込み中...");
+                    }
                 }
                 img.src = event.target.result;
             }
             reader.readAsDataURL(e.target.files[0]);
         });
 
-        function processImage() {
-            // 1. 画像の読み込み
+        function processImageFaithful() {
             let src = cv.imread('canvasInput');
             let hsv = new cv.Mat();
             let mask = new cv.Mat();
             let dst = src.clone();
 
-            // 2. 緑色の除去 (HSVでの二値化)
+            // ==========================================
+            // STEP 1 & 2: 緑背景除去 & ワイヤ抽出
+            // ==========================================
             cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
             cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
             
-            // 緑色の範囲を指定（環境に合わせて要調整）
-            let lowGreen = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [35, 40, 40, 0]);
-            let highGreen = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [85, 255, 255, 255]);
+            // 糸の光沢影響を抑えるため、明度(V)の下限を20に設定して背景の影まで確実に緑を拾う
+            let lowGreen = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [35, 40, 20, 0]);
+            let highGreen = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [90, 255, 255, 255]);
             cv.inRange(hsv, lowGreen, highGreen, mask);
-            
-            // 反転して「網だけが白(255)」の画像を作る
-            cv.bitwise_not(mask, mask);
+            cv.bitwise_not(mask, mask); // 反転して網を白に
 
-            // 3. 直線検出 (確率的ハフ変換)
+            // 穴埋めとシャープ化
+            let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
+            cv.morphologyEx(mask, mask, cv.MORPH_CLOSE, kernel);
+            cv.Canny(mask, mask, 50, 150); // エッジ検出でハフ変換の精度を跳ね上げる
+
+            // 確率的ハフ変換 (一発目のパラメータベース)
             let lines = new cv.Mat();
-            // 引数: 入力, 出力, 距離分解能, 角度分解能, 閾値, 最小線長, 最大線隙
-            cv.HoughLinesP(mask, lines, 1, Math.PI / 180, 100, 200, 20);
+            cv.HoughLinesP(mask, lines, 1, Math.PI / 180, 50, 80, 60);
 
-            // 4. 直線の描画と色分け
+            // ==========================================
+            // STEP 3 & 4: ／方向・＼方向の系列抽出
+            // ==========================================
+            let lineGroup = [];
+            const ANGLE_THRESHOLD = 5;      // 同じ系列とみなす傾きの許容差（度）
+            const INTERCEPT_THRESHOLD = 60;  // 隣のコードと混ざらない最適な距離（ピクセル）
+            let midY = Math.round(src.rows / 2); // 基準となる画像中央のY座標
+
             for (let i = 0; i < lines.rows; ++i) {
                 let x1 = lines.data32S[i * 4];
                 let y1 = lines.data32S[i * 4 + 1];
                 let x2 = lines.data32S[i * 4 + 2];
                 let y2 = lines.data32S[i * 4 + 3];
-                
-                // 傾きを計算してグループ分け
+
                 let angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
-                
-                let color;
-                if (angle > 0) {
-                    color = new cv.Scalar(255, 165, 0, 255); // オレンジ (右肩下がり)
-                } else {
-                    color = new cv.Scalar(0, 0, 255, 255);   // 青 (右肩上がり)
+                if (angle > 90) angle -= 180;
+                if (angle < -90) angle += 180;
+
+                // 網の想定角度（50度〜85度）から外れるノイズを弾く
+                if (Math.abs(angle) < 50 || Math.abs(angle) > 85) continue;
+
+                let a = (x2 - x1) !== 0 ? (y2 - y1) / (x2 - x1) : 9999;
+                let b = y1 - a * x1;
+                let centerX = (midY - b) / a; // 符号ブレに強い中央X座標で距離判定
+
+                let matched = false;
+                for (let group of lineGroup) {
+                    // 角度が近く、かつ同一系列（centerXの距離が近い）ものをグループ化
+                    if (Math.abs(group.angle - angle) < ANGLE_THRESHOLD && Math.abs(group.centerX - centerX) < INTERCEPT_THRESHOLD) {
+                        // 重み付き平均で系列の中心軸と傾きを動的にフィードバック
+                        group.centerX = (group.centerX * group.lines.length + centerX) / (group.lines.length + 1);
+                        group.angle   = (group.angle * group.lines.length + angle) / (group.lines.length + 1);
+                        group.lines.push({x1, y1, x2, y2, a, b});
+                        matched = true;
+                        break;
+                    }
                 }
-                
-                cv.line(dst, new cv.Point(x1, y1), new cv.Point(x2, y2), color, 3);
+
+                if (!matched) {
+                    lineGroup.push({ angle, a, b, centerX, lines: [{x1, y1, x2, y2, a, b}] });
+                }
             }
 
-            // 結果の表示
+            // 方向別に系列を分離する（aの正負で完全セパレート）
+            let blueLines = lineGroup.filter(g => g.a < 0).sort((a, b) => a.centerX - b.centerX);
+            let orangeLines = lineGroup.filter(g => g.a >= 0).sort((a, b) => a.centerX - b.centerX);
+
+            // ==========================================
+            // STEP 5: 周期推定 (Period Estimation)
+            // ==========================================
+            function estimatePeriod(sortedLines) {
+                if (sortedLines.length < 2) return 0;
+                let intervals = [];
+                for (let i = 0; i < sortedLines.length - 1; i++) {
+                    intervals.push(sortedLines[i+1].centerX - sortedLines[i].centerX);
+                }
+                // 外れ値に強い「中央値（メディアン）」を使って網の正確な周期を算出
+                intervals.sort((a, b) => a - b);
+                return intervals[Math.floor(intervals.length / 2)];
+            }
+
+            let bluePeriod = estimatePeriod(blueLines);
+            let orangePeriod = estimatePeriod(orangeLines);
+
+            // コンソールログで周期情報を可視化
+            console.log("--- 周期推定結果 ---");
+            console.log("検出された青線（／方向）の系列数:", blueLines.length, "推定周期(ピクセル):", bluePeriod);
+            console.log("検出されたオレンジ線（＼方向）の系列数:", orangeLines.length, "推定周期(ピクセル):", orangePeriod);
+
+            // 描画処理：一発目のクオリティそのままに、画面いっぱいにブチ抜く直線
+            lineGroup.forEach(group => {
+                let startY = 0;
+                let startX = Math.round((startY - group.b) / group.a);
+                let endY = dst.rows;
+                let endX = Math.round((endY - group.b) / group.a);
+
+                let color = (group.a >= 0) ? new cv.Scalar(255, 140, 0, 255) : new cv.Scalar(0, 100, 255, 255);
+                cv.line(dst, new cv.Point(startX, startY), new cv.Point(endX, endY), color, 3);
+            });
+
             cv.imshow('canvasOutput', dst);
 
             // メモリ解放
             src.delete(); hsv.delete(); mask.delete(); dst.delete();
-            lines.delete(); lowGreen.delete(); highGreen.delete();
+            lines.delete(); kernel.delete(); lowGreen.delete(); highGreen.delete();
         }
     </script>
 </body>
