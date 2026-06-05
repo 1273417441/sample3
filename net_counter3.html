@@ -27,24 +27,24 @@
   #cam{position:relative;flex:1;overflow:hidden;background:#000;min-height:0}
   #video{width:100%;height:100%;object-fit:cover;display:block}
   #ov{position:absolute;inset:0;pointer-events:none}
-
-  /* 二値プレビュー：右上、少し大きめ */
-  #bv{position:absolute;top:6px;right:6px;width:140px;
+  #bv{position:absolute;top:6px;right:6px;width:110px;
     border:1px solid var(--amber);display:none}
-
-  /* デバッグ情報 */
   #dbg{position:absolute;left:6px;top:6px;font-size:10px;line-height:1.9;
-    color:rgba(0,230,118,.95);text-shadow:0 1px 3px #000,0 0 6px #000;
-    pointer-events:none;background:rgba(0,0,0,.35);padding:3px 6px;border-radius:3px}
+    color:rgba(0,230,118,.95);text-shadow:0 1px 3px #000;
+    pointer-events:none;background:rgba(0,0,0,.4);padding:3px 6px;border-radius:3px}
 
   #bottom{background:var(--panel);border-top:1px solid var(--border);
-    flex-shrink:0;overflow-y:auto;max-height:55vh}
-  #arow{display:flex;padding:6px 14px 4px;gap:8px}
-  .ac{flex:1;background:#0a1a0a;border:1px solid var(--border);
-    border-radius:4px;padding:4px 8px;text-align:center}
-  .av{font-size:19px;font-weight:700;line-height:1}
-  .al{font-size:9px;color:var(--text-dim);letter-spacing:.1em;margin-top:1px}
-  .av.fwd{color:#ff5555} .av.bwd{color:#5599ff}
+    flex-shrink:0;overflow-y:auto;max-height:58vh}
+
+  /* 角度・ピッチ表示 */
+  #info-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;
+    gap:6px;padding:6px 14px 4px}
+  .ic{background:#0a1a0a;border:1px solid var(--border);border-radius:4px;
+    padding:4px 6px;text-align:center}
+  .iv{font-size:16px;font-weight:700;line-height:1.1}
+  .il{font-size:9px;color:var(--text-dim);letter-spacing:.08em;margin-top:1px}
+  .iv.fwd{color:#ff5555} .iv.bwd{color:#5599ff}
+  .iv.yel{color:#ffdd00} .iv.grn{color:var(--green)}
 
   #mrow{display:flex;padding:2px 14px 4px;gap:6px}
   .mc{flex:1;background:var(--green-dark);border:1px solid var(--border);
@@ -66,23 +66,18 @@
   #ppanel.open{display:flex}
   .pr{display:flex;align-items:center;gap:8px}
   .pl{font-size:10px;color:var(--text-dim);letter-spacing:.08em;
-    width:122px;flex-shrink:0;text-transform:uppercase}
+    width:126px;flex-shrink:0;text-transform:uppercase}
   input[type=range]{flex:1;accent-color:var(--green);height:3px}
-  .pv{font-size:12px;color:var(--green);width:34px;text-align:right}
+  .pv{font-size:12px;color:var(--green);width:36px;text-align:right}
   .psec{font-size:9px;color:var(--amber);letter-spacing:.15em;text-transform:uppercase;
     margin-top:5px;margin-bottom:1px;border-top:1px solid var(--border);padding-top:4px}
-
-  /* 角度自動推定インジケータ */
-  .auto-badge{font-size:9px;background:rgba(0,230,118,.15);
-    border:1px solid var(--green);border-radius:3px;
-    color:var(--green);padding:1px 5px;letter-spacing:.08em}
 </style>
 </head>
 <body>
 
 <div id="header">
   <div class="sdot" id="sdot"></div>
-  <h1>Wire Check / STEP1–3</h1>
+  <h1>Wire Check / Ideal Grid</h1>
   <div style="display:flex;gap:8px;align-items:center">
     <span style="font-size:11px;color:var(--text-dim)" id="fps-lbl">--fps</span>
     <button class="btn" id="btn-adj" style="flex:none;padding:4px 10px;font-size:10px">⚙ 調整</button>
@@ -97,90 +92,67 @@
 </div>
 
 <div id="bottom">
-
-  <!-- 角度表示 -->
-  <div id="arow">
-    <div class="ac">
-      <div style="display:flex;align-items:center;justify-content:center;gap:5px">
-        <div class="av fwd" id="a-fwd">--°</div>
-        <span class="auto-badge" id="badge-fwd">AUTO</span>
-      </div>
-      <div class="al">／方向 (赤)</div>
-    </div>
-    <div class="ac">
-      <div style="display:flex;align-items:center;justify-content:center;gap:5px">
-        <div class="av bwd" id="a-bwd">--°</div>
-        <span class="auto-badge" id="badge-bwd">AUTO</span>
-      </div>
-      <div class="al">＼方向 (青)</div>
-    </div>
+  <!-- 推定値表示 -->
+  <div id="info-grid">
+    <div class="ic"><div class="iv fwd" id="i-fa">--°</div><div class="il">／角度</div></div>
+    <div class="ic"><div class="iv bwd" id="i-ba">--°</div><div class="il">＼角度</div></div>
+    <div class="ic"><div class="iv fwd" id="i-fp">--px</div><div class="il">／ピッチ</div></div>
+    <div class="ic"><div class="iv bwd" id="i-bp">--px</div><div class="il">＼ピッチ</div></div>
   </div>
 
-  <!-- メトリクス -->
   <div id="mrow">
     <div class="mc"><div class="mv" id="m-bg">--%</div><div class="ml">BG率</div></div>
-    <div class="mc"><div class="mv" id="m-fwd" style="color:#ff6666">0</div><div class="ml">／本数</div></div>
-    <div class="mc"><div class="mv" id="m-bwd" style="color:#6699ff">0</div><div class="ml">＼本数</div></div>
-    <div class="mc"><div class="mv" id="m-lw">2px</div><div class="ml">線の太さ</div></div>
+    <div class="mc"><div class="mv" id="m-fl" style="color:#ff6666">0</div><div class="ml">／本数</div></div>
+    <div class="mc"><div class="mv" id="m-bl" style="color:#6699ff">0</div><div class="ml">＼本数</div></div>
+    <div class="mc"><div class="mv" id="m-xp" style="color:#ffdd00">0</div><div class="ml">交点数</div></div>
   </div>
 
-  <!-- ボタン -->
   <div id="brow">
     <button class="btn pri" id="btn-start">▶ カメラ開始</button>
-    <button class="btn on"  id="btn-vis">線表示 ON</button>
+    <button class="btn on"  id="btn-vis">格子表示 ON</button>
     <button class="btn"     id="btn-bin">二値表示</button>
   </div>
 
-  <!-- 調整パネル -->
   <div id="ppanel">
-    <div class="psec">▸ STEP1 グリーンバック検出</div>
-    <div class="pr">
-      <span class="pl">緑 H 下限</span>
+    <div class="psec">▸ STEP1 グリーンバック</div>
+    <div class="pr"><span class="pl">緑 H 下限</span>
       <input type="range" id="p-hmin" min="60" max="130" value="85">
-      <span class="pv" id="v-hmin">85</span>
-    </div>
-    <div class="pr">
-      <span class="pl">緑 H 上限</span>
+      <span class="pv" id="v-hmin">85</span></div>
+    <div class="pr"><span class="pl">緑 H 上限</span>
       <input type="range" id="p-hmax" min="130" max="200" value="165">
-      <span class="pv" id="v-hmax">165</span>
-    </div>
-    <div class="pr">
-      <span class="pl">彩度下限 %</span>
+      <span class="pv" id="v-hmax">165</span></div>
+    <div class="pr"><span class="pl">彩度下限 %</span>
       <input type="range" id="p-smin" min="5" max="80" value="20">
-      <span class="pv" id="v-smin">20</span>
-    </div>
-    <div class="pr">
-      <span class="pl">明度下限 %</span>
+      <span class="pv" id="v-smin">20</span></div>
+    <div class="pr"><span class="pl">明度下限 %</span>
       <input type="range" id="p-vmin" min="5" max="80" value="15">
-      <span class="pv" id="v-vmin">15</span>
-    </div>
+      <span class="pv" id="v-vmin">15</span></div>
 
-    <div class="psec">▸ STEP2 Hough（全角度スキャン→自動推定）</div>
-    <div class="pr">
-      <span class="pl">Hough 閾値</span>
-      <input type="range" id="p-hthr" min="3" max="80" value="20">
-      <span class="pv" id="v-hthr">20</span>
-    </div>
-    <div class="pr">
-      <span class="pl">角度許容差 °</span>
-      <input type="range" id="p-atol" min="2" max="30" value="8">
-      <span class="pv" id="v-atol">8</span>
-    </div>
+    <div class="psec">▸ STEP2-3 角度推定</div>
+    <div class="pr"><span class="pl">角度分離閾値 °</span>
+      <input type="range" id="p-asep" min="20" max="80" value="50">
+      <span class="pv" id="v-asep">50</span></div>
+    <div class="pr"><span class="pl">平滑化幅 (rho)</span>
+      <input type="range" id="p-smth" min="1" max="15" value="5">
+      <span class="pv" id="v-smth">5</span></div>
 
-    <div class="psec">▸ STEP3 ワイヤ線表示</div>
-    <div class="pr">
-      <span class="pl">最大線数/方向</span>
-      <input type="range" id="p-mxln" min="3" max="80" value="40">
-      <span class="pv" id="v-mxln">40</span>
-    </div>
-    <div class="pr">
-      <span class="pl">線の太さ px</span>
-      <input type="range" id="p-lw" min="1" max="6" value="2">
-      <span class="pv" id="v-lw">2</span>
-    </div>
+    <div class="psec">▸ STEP6 ρピーク統合</div>
+    <div class="pr"><span class="pl">統合距離 px</span>
+      <input type="range" id="p-pmerge" min="2" max="30" value="8">
+      <span class="pv" id="v-pmerge">8</span></div>
+    <div class="pr"><span class="pl">最小スコア比 %</span>
+      <input type="range" id="p-pmin" min="1" max="50" value="10">
+      <span class="pv" id="v-pmin">10</span></div>
+
+    <div class="psec">▸ 描画</div>
+    <div class="pr"><span class="pl">線の太さ px</span>
+      <input type="range" id="p-lw" min="1" max="5" value="1">
+      <span class="pv" id="v-lw">1</span></div>
+    <div class="pr"><span class="pl">交点サイズ px</span>
+      <input type="range" id="p-dr" min="2" max="10" value="4">
+      <span class="pv" id="v-dr">4</span></div>
   </div>
-
-</div><!-- /bottom -->
+</div>
 
 <script>
 // ══════════════════════════════════
@@ -188,16 +160,16 @@
 // ══════════════════════════════════
 const P = {
   hMin:85, hMax:165, sMin:20, vMin:15,
-  houghThr:20,
-  angleTol:8,   // ★狭く：自動推定した角度の±8°だけ
-  maxLines:40,
-  lineWidth:2,
+  angleSep:50,   // 2峰を分ける最小角度差
+  smoothW:5,     // ρヒストグラム平滑化幅
+  peakMerge:8,   // ρピーク統合距離(px)
+  peakMinRatio:10, // 最大ピーク比の何%以上を採用
+  lineWidth:1,
+  dotRadius:4,
 };
 const S = {
-  running:false, showLines:true, showBin:false,
+  running:false, showGrid:true, showBin:false,
   fc:0, fpsT:0,
-  // 自動推定した代表角度（度）
-  autoFwd:null, autoBwd:null,
 };
 
 const video  = document.getElementById('video');
@@ -208,12 +180,6 @@ const bvCtx  = bvEl.getContext('2d');
 const dbgEl  = document.getElementById('dbg');
 const sdot   = document.getElementById('sdot');
 const fpsLbl = document.getElementById('fps-lbl');
-const aFwd   = document.getElementById('a-fwd');
-const aBwd   = document.getElementById('a-bwd');
-const mBg    = document.getElementById('m-bg');
-const mFwd   = document.getElementById('m-fwd');
-const mBwd   = document.getElementById('m-bwd');
-const mLw    = document.getElementById('m-lw');
 
 const proc = document.createElement('canvas');
 const pctx = proc.getContext('2d', {willReadFrequently:true});
@@ -221,278 +187,350 @@ const pctx = proc.getContext('2d', {willReadFrequently:true});
 // ══════════════════════════════════
 //  カメラ
 // ══════════════════════════════════
-let started = false;
-document.getElementById('btn-start').addEventListener('click', async () => {
-  if (started) return; started = true;
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720}}
+let started=false;
+document.getElementById('btn-start').addEventListener('click', async()=>{
+  if(started) return; started=true;
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}
     });
-    video.srcObject = stream; await video.play();
-    S.running = true; sdot.className = 'sdot on';
-    document.getElementById('btn-start').textContent = '■ 停止';
+    video.srcObject=stream; await video.play();
+    S.running=true; sdot.className='sdot on';
+    document.getElementById('btn-start').textContent='■ 停止';
     document.getElementById('btn-start').classList.remove('pri');
     requestAnimationFrame(loop);
-  } catch(e) { alert('カメラエラー: '+e.message); started = false; }
+  }catch(e){alert('カメラエラー: '+e.message);started=false;}
 });
 
 // ══════════════════════════════════
 //  メインループ
 // ══════════════════════════════════
-let lastTs = 0;
-function loop(ts) {
-  if (!S.running) return;
+let lastTs=0;
+function loop(ts){
+  if(!S.running) return;
   requestAnimationFrame(loop);
   S.fc++;
-  if (ts - S.fpsT > 1000) {
-    fpsLbl.textContent = S.fc + 'fps';
-    S.fc = 0; S.fpsT = ts;
+  if(ts-S.fpsT>1000){ fpsLbl.textContent=S.fc+'fps'; S.fc=0; S.fpsT=ts; }
+  if(ts-lastTs<200) return;   // 5fps処理
+  lastTs=ts;
+  if(video.readyState<2) return;
+
+  const vw=video.videoWidth, vh=video.videoHeight;
+  if(!vw||!vh) return;
+  const dw=video.clientWidth, dh=video.clientHeight;
+  if(ovEl.width!==dw||ovEl.height!==dh){ ovEl.width=dw; ovEl.height=dh; }
+
+  // 処理解像度 200px幅（精度とのバランス）
+  const PW=200, PH=Math.round(vh/vw*PW);
+  proc.width=PW; proc.height=PH;
+  pctx.drawImage(video,0,0,PW,PH);
+  const imgData=pctx.getImageData(0,0,PW,PH);
+
+  // ── STEP1 ──
+  const {mask, bgCount} = step1_mask(imgData, PW, PH);
+  const bgPct=Math.round(bgCount/(PW*PH)*100);
+  if(S.showBin) drawBinary(mask,PW,PH);
+
+  // ── STEP2: 全角度Hough累積 (sum版) ──
+  const {acc, rhoSize, rhoOff, cosT, sinT} = step2_hough(mask, PW, PH);
+
+  // ── STEP3: 角度ヒストグラム → 2峰検出 ──
+  const {thetaA, thetaB} = step3_anglePeaks(acc, rhoSize);
+
+  // STEP4-7: 各方向のρヒストグラム → 代表ライン
+  let fLines=[], bLines=[];
+  let pitchF=0, pitchB=0;
+  if(thetaA!==null){
+    const res = step4to7_rhoLines(acc, thetaA, rhoSize, rhoOff);
+    fLines = res.lines; pitchF = res.pitch;
   }
-  // 150ms間引き（≈6fps処理）
-  if (ts - lastTs < 150) return;
-  lastTs = ts;
-  if (video.readyState < 2) return;
-
-  const vw = video.videoWidth, vh = video.videoHeight;
-  if (!vw || !vh) return;
-  const dw = video.clientWidth, dh = video.clientHeight;
-  if (ovEl.width !== dw || ovEl.height !== dh) {
-    ovEl.width = dw; ovEl.height = dh;
+  if(thetaB!==null){
+    const res = step4to7_rhoLines(acc, thetaB, rhoSize, rhoOff);
+    bLines = res.lines; pitchB = res.pitch;
   }
 
-  const PW = 160, PH = Math.round(vh/vw*PW);
-  proc.width = PW; proc.height = PH;
-  pctx.drawImage(video, 0, 0, PW, PH);
-  const imgData = pctx.getImageData(0, 0, PW, PH);
+  // ── STEP8: 交点計算 ──
+  const crossPts = step8_intersections(fLines, bLines, PW, PH);
 
-  // STEP1
-  const {wireMask, bgCount, wireCount} = buildWireMask(imgData, PW, PH);
-  const bgPct = Math.round(bgCount / (PW*PH) * 100);
-  mBg.textContent = bgPct + '%';
-  // BG率で色警告
-  mBg.style.color = bgPct < 30 ? 'var(--red)' : bgPct < 50 ? 'var(--amber)' : 'var(--text)';
+  // ── STEP9: 描画 ──
+  drawGrid(dw, dh, PW, PH, fLines, bLines, crossPts);
 
-  if (S.showBin) drawBinary(wireMask, PW, PH);
+  // UI更新
+  const mBg=document.getElementById('m-bg');
+  mBg.textContent=bgPct+'%';
+  mBg.style.color=bgPct<30?'var(--red)':bgPct<50?'var(--amber)':'var(--text)';
+  document.getElementById('m-fl').textContent=fLines.length;
+  document.getElementById('m-bl').textContent=bLines.length;
+  document.getElementById('m-xp').textContent=crossPts.length;
+  document.getElementById('i-fa').textContent=thetaA!==null?thetaA+'°':'--°';
+  document.getElementById('i-ba').textContent=thetaB!==null?thetaB+'°':'--°';
+  document.getElementById('i-fp').textContent=pitchF>0?pitchF.toFixed(1)+'px':'--px';
+  document.getElementById('i-bp').textContent=pitchB>0?pitchB.toFixed(1)+'px':'--px';
 
-  // STEP2: まず全角度Houghで代表角度を自動推定
-  const {fAngle, bAngle, fullAcc, rhoSize, rhoOff} =
-    autoDetectAngles(wireMask, PW, PH);
-
-  // 推定結果をスムージング（急変防止）
-  if (fAngle !== null) S.autoFwd = S.autoFwd === null ? fAngle : S.autoFwd*0.7 + fAngle*0.3;
-  if (bAngle !== null) S.autoBwd = S.autoBwd === null ? bAngle : S.autoBwd*0.7 + bAngle*0.3;
-
-  // STEP3: 推定角度 ± 許容差 でワイヤ群抽出
-  const {fLines, bLines} = extractWireLines(wireMask, PW, PH, S.autoFwd, S.autoBwd);
-
-  mFwd.textContent = fLines.length;
-  mBwd.textContent = bLines.length;
-  mLw.textContent  = P.lineWidth + 'px';
-  aFwd.textContent = S.autoFwd !== null ? S.autoFwd.toFixed(1)+'°' : '--°';
-  aBwd.textContent = S.autoBwd !== null ? S.autoBwd.toFixed(1)+'°' : '--°';
-
-  drawOverlay(dw, dh, PW, PH, fLines, bLines);
-
-  dbgEl.textContent =
-    `BG:${bgPct}%  Wire:${wireCount}px\n` +
-    `AUTO ／:${S.autoFwd!==null?S.autoFwd.toFixed(1)+'°':'-'}  ＼:${S.autoBwd!==null?S.autoBwd.toFixed(1)+'°':'-'}\n` +
-    `Lines  ／:${fLines.length}本  ＼:${bLines.length}本`;
+  dbgEl.textContent=
+    `BG:${bgPct}%\n`+
+    `角度 ／:${thetaA!==null?thetaA+'°':'-'}  ＼:${thetaB!==null?thetaB+'°':'-'}\n`+
+    `本数 ／:${fLines.length}  ＼:${bLines.length}  交点:${crossPts.length}`;
 }
 
 // ══════════════════════════════════
 //  STEP1: HSV → ワイヤマスク
 // ══════════════════════════════════
-function buildWireMask(imgData, w, h) {
-  const d = imgData.data;
-  const mask = new Uint8Array(w*h);
-  let bgCount=0, wireCount=0;
-  for (let i=0; i<w*h; i++) {
+function step1_mask(imgData, w, h){
+  const d=imgData.data;
+  const mask=new Uint8Array(w*h);
+  let bgCount=0;
+  for(let i=0;i<w*h;i++){
     const r=d[i*4]/255, g=d[i*4+1]/255, b=d[i*4+2]/255;
     const mx=Math.max(r,g,b), mn=Math.min(r,g,b), delta=mx-mn;
     let isBg=false;
-    if (delta>0.01 && mx>0.1) {
+    if(delta>0.01&&mx>0.1){
       let hue=0;
-      if      (mx===r) hue=(60*((g-b)/delta)+360)%360;
-      else if (mx===g) hue=60*((b-r)/delta)+120;
-      else             hue=60*((r-g)/delta)+240;
-      const sat=delta/mx*100, val=mx*100;
-      if (hue>=P.hMin && hue<=P.hMax && sat>=P.sMin && val>=P.vMin) isBg=true;
+      if(mx===r) hue=(60*((g-b)/delta)+360)%360;
+      else if(mx===g) hue=60*((b-r)/delta)+120;
+      else hue=60*((r-g)/delta)+240;
+      if(hue>=P.hMin&&hue<=P.hMax&&delta/mx*100>=P.sMin&&mx*100>=P.vMin) isBg=true;
     }
-    if (isBg) bgCount++; else { mask[i]=1; wireCount++; }
+    if(isBg) bgCount++; else mask[i]=1;
   }
-  return {wireMask:mask, bgCount, wireCount};
+  return {mask, bgCount};
 }
 
 // ══════════════════════════════════
-//  STEP2: 全角度Houghで代表角2本を自動検出
-//  ★ハードコード角度ゼロ。毎フレーム推定。
+//  STEP2: 全角度Hough（0-179°、1°刻み、sum版）
 // ══════════════════════════════════
-function autoDetectAngles(mask, w, h) {
-  const TSTEP  = 1;   // 1度刻みで全スキャン
-  const SKIP   = 4;   // 4px間引き
-  const diagLen = Math.ceil(Math.sqrt(w*w+h*h));
-  const rhoOff  = diagLen;
-  const rhoSize = diagLen*2+1;
-  const TMAX    = 180;
+function step2_hough(mask, w, h){
+  const TMAX=180, SKIP=3;
+  const diagLen=Math.ceil(Math.sqrt(w*w+h*h));
+  const rhoOff=diagLen, rhoSize=diagLen*2+1;
 
-  // cos/sinテーブル
-  const cosT = new Float32Array(TMAX);
-  const sinT = new Float32Array(TMAX);
-  for (let t=0; t<TMAX; t++) {
-    cosT[t] = Math.cos(t*Math.PI/180);
-    sinT[t] = Math.sin(t*Math.PI/180);
+  const cosT=new Float32Array(TMAX);
+  const sinT=new Float32Array(TMAX);
+  for(let t=0;t<TMAX;t++){
+    cosT[t]=Math.cos(t*Math.PI/180);
+    sinT[t]=Math.sin(t*Math.PI/180);
   }
 
-  // 累積（全角度）
-  const acc = new Int32Array(TMAX * rhoSize);
-  for (let y=0; y<h; y+=SKIP) {
-    for (let x=0; x<w; x+=SKIP) {
-      if (!mask[y*w+x]) continue;
-      for (let t=0; t<TMAX; t++) {
-        const rho = Math.round(x*cosT[t]+y*sinT[t])+rhoOff;
-        if (rho>=0 && rho<rhoSize) acc[t*rhoSize+rho]++;
+  // acc[t * rhoSize + rho] = 投票数
+  const acc=new Int32Array(TMAX*rhoSize);
+  for(let y=0;y<h;y+=SKIP){
+    for(let x=0;x<w;x+=SKIP){
+      if(!mask[y*w+x]) continue;
+      for(let t=0;t<TMAX;t++){
+        const rho=Math.round(x*cosT[t]+y*sinT[t])+rhoOff;
+        if(rho>=0&&rho<rhoSize) acc[t*rhoSize+rho]++;
       }
     }
   }
-
-  // 角度ヒストグラム（各角度の最大rhoスコア）
-  const thetaHist = new Float32Array(TMAX);
-  for (let t=0; t<TMAX; t++) {
-    let mx=0;
-    for (let r=0; r<rhoSize; r++) {
-      const v=acc[t*rhoSize+r]; if(v>mx) mx=v;
-    }
-    thetaHist[t]=mx;
-  }
-
-  // ヒストグラムから上位2ピークを検出（互いに15°以上離れたもの）
-  const MIN_ANGLE_SEP = 15;
-  const peaks = findThetaPeaks(thetaHist, TMAX, 2, MIN_ANGLE_SEP);
-
-  let fAngle=null, bAngle=null;
-  if (peaks.length === 2) {
-    // 小さい角度=／方向、大きい角度=＼方向
-    const [a, b] = peaks[0] < peaks[1] ? [peaks[0],peaks[1]] : [peaks[1],peaks[0]];
-    fAngle = a; bAngle = b;
-  } else if (peaks.length === 1) {
-    // 1方向しか検出できなかった場合は既知値を保持
-    const ang = peaks[0];
-    if (S.autoFwd===null && S.autoBwd===null) fAngle = ang;
-    else if (S.autoFwd!==null && Math.abs(ang-S.autoFwd)<20) fAngle=ang;
-    else if (S.autoBwd!==null && Math.abs(ang-S.autoBwd)<20) bAngle=ang;
-  }
-
-  return {fAngle, bAngle, acc, rhoSize, rhoOff};
-}
-
-function findThetaPeaks(hist, len, maxPeaks, minSep) {
-  // コピーしてソート
-  const idx = Array.from({length:len},(_,i)=>i)
-    .sort((a,b)=>hist[b]-hist[a]);
-  const peaks = [];
-  for (const i of idx) {
-    if (peaks.length >= maxPeaks) break;
-    // 既存ピークと十分離れているか
-    const tooClose = peaks.some(p => {
-      const d = Math.abs(i-p);
-      return Math.min(d, len-d) < minSep;
-    });
-    if (!tooClose) peaks.push(i);
-  }
-  return peaks;
+  return {acc, rhoSize, rhoOff, cosT, sinT};
 }
 
 // ══════════════════════════════════
-//  STEP3: 推定角度±許容差でワイヤ群抽出
+//  STEP3: 角度ヒストグラム → 2峰検出
+//  スコア = sum(acc[t, :])
 // ══════════════════════════════════
-function extractWireLines(mask, w, h, fCenter, bCenter) {
-  if (fCenter===null && bCenter===null) return {fLines:[], bLines:[]};
-
-  const TSTEP   = 1;
-  const SKIP    = 3;
-  const diagLen = Math.ceil(Math.sqrt(w*w+h*h));
-  const rhoOff  = diagLen;
-  const rhoSize = diagLen*2+1;
-  const AT      = P.angleTol;
-
-  // 各方向の角度レンジを生成
-  function makeRange(center) {
-    if (center===null) return [];
-    const range=[];
-    for (let dt=-AT; dt<=AT; dt+=TSTEP) {
-      const t = ((Math.round(center)+dt)%180+180)%180;
-      range.push(t);
-    }
-    return [...new Set(range)].sort((a,b)=>a-b);
+function step3_anglePeaks(acc, rhoSize){
+  const TMAX=180;
+  const tHist=new Float32Array(TMAX);
+  for(let t=0;t<TMAX;t++){
+    let s=0;
+    for(let r=0;r<rhoSize;r++) s+=acc[t*rhoSize+r];
+    tHist[t]=s;
   }
 
-  const fRange = makeRange(fCenter);
-  const bRange = makeRange(bCenter);
+  // 1峰目：最大
+  let peak1=-1, best1=0;
+  for(let t=0;t<TMAX;t++) if(tHist[t]>best1){ best1=tHist[t]; peak1=t; }
 
-  const cosT={}, sinT={};
-  [...fRange,...bRange].forEach(t=>{
-    const rad=t*Math.PI/180;
-    cosT[t]=Math.cos(rad); sinT[t]=Math.sin(rad);
-  });
-
-  const fAcc = fRange.length ? new Int32Array(fRange.length*rhoSize) : null;
-  const bAcc = bRange.length ? new Int32Array(bRange.length*rhoSize) : null;
-
-  for (let y=0; y<h; y+=SKIP) {
-    for (let x=0; x<w; x+=SKIP) {
-      if (!mask[y*w+x]) continue;
-      if (fAcc) fRange.forEach((t,ti)=>{
-        const rho=Math.round(x*cosT[t]+y*sinT[t])+rhoOff;
-        if(rho>=0&&rho<rhoSize) fAcc[ti*rhoSize+rho]++;
-      });
-      if (bAcc) bRange.forEach((t,ti)=>{
-        const rho=Math.round(x*cosT[t]+y*sinT[t])+rhoOff;
-        if(rho>=0&&rho<rhoSize) bAcc[ti*rhoSize+rho]++;
-      });
-    }
+  // 2峰目：peak1からangleSep以上離れた最大
+  let peak2=-1, best2=0;
+  for(let t=0;t<TMAX;t++){
+    const d=Math.min(Math.abs(t-peak1),TMAX-Math.abs(t-peak1));
+    if(d>=P.angleSep && tHist[t]>best2){ best2=tHist[t]; peak2=t; }
   }
 
-  const thr = Math.max(2, P.houghThr/(SKIP*SKIP));
-  const fLines = fAcc ? peakLines(fAcc, fRange, rhoSize, rhoOff, thr, P.maxLines) : [];
-  const bLines = bAcc ? peakLines(bAcc, bRange, rhoSize, rhoOff, thr, P.maxLines) : [];
-  return {fLines, bLines};
-}
-
-function peakLines(acc, tRange, rhoSize, rhoOff, thr, maxLines) {
-  const peaks=[];
-  for (let ti=0; ti<tRange.length; ti++)
-    for (let r=0; r<rhoSize; r++) {
-      const v=acc[ti*rhoSize+r];
-      if (v>=thr) peaks.push({ti,r,v});
-    }
-  peaks.sort((a,b)=>b.v-a.v);
-  const used=new Set();
-  const lines=[];
-  const DR=5, DT=2;
-  for (const pk of peaks) {
-    if (lines.length>=maxLines) break;
-    const key=`${pk.ti}_${pk.r}`;
-    if (used.has(key)) continue;
-    for(let dt=-DT;dt<=DT;dt++)
-      for(let dr=-DR;dr<=DR;dr++)
-        used.add(`${pk.ti+dt}_${pk.r+dr}`);
-    lines.push({
-      theta:   tRange[pk.ti]*Math.PI/180,
-      thetaDeg:tRange[pk.ti],
-      rho:     pk.r-rhoOff,
-      score:   pk.v
-    });
-  }
-  return lines;
+  return {
+    thetaA: peak1>=0?peak1:null,
+    thetaB: peak2>=0?peak2:null,
+  };
 }
 
 // ══════════════════════════════════
-//  二値プレビュー（ワイヤ=白、BG=黒）
+//  STEP4〜7: 1方向のρヒストグラム→代表ライン群
 // ══════════════════════════════════
-function drawBinary(mask, w, h) {
-  const aspect=h/w, bw=140, bh=Math.round(bw*aspect);
-  bvEl.width=bw; bvEl.height=bh;
-  bvEl.style.height=bh+'px';
+function step4to7_rhoLines(acc, theta, rhoSize, rhoOff){
+  // STEP4: θ固定でρヒスト
+  const rhoHist=new Float32Array(rhoSize);
+  for(let r=0;r<rhoSize;r++) rhoHist[r]=acc[theta*rhoSize+r];
+
+  // STEP5: Gaussian平滑化
+  const sw=P.smoothW;
+  const smoothed=gaussSmooth(rhoHist, sw);
+
+  // STEP6: ピーク検出 → 近接統合
+  const maxVal=smoothed.reduce((a,b)=>Math.max(a,b),0);
+  const minVal=maxVal*P.peakMinRatio/100;
+  const rawPeaks=findPeaks(smoothed, minVal, P.peakMerge);
+
+  // ρ → 実座標変換用
+  const thetaRad=theta*Math.PI/180;
+
+  // STEP7: 代表ライン生成
+  const lines=rawPeaks.map(r=>({
+    theta: thetaRad,
+    thetaDeg: theta,
+    rho: r - rhoOff,
+    score: smoothed[r],
+  }));
+
+  // ピッチ推定（隣接ライン間距離の中央値）
+  let pitch=0;
+  if(lines.length>=2){
+    const rhos=lines.map(l=>l.rho).sort((a,b)=>a-b);
+    const gaps=[];
+    for(let i=1;i<rhos.length;i++) gaps.push(rhos[i]-rhos[i-1]);
+    gaps.sort((a,b)=>a-b);
+    pitch=gaps[Math.floor(gaps.length/2)];
+  }
+
+  return {lines, pitch};
+}
+
+// Gaussian平滑化
+function gaussSmooth(hist, halfW){
+  const n=hist.length;
+  const out=new Float32Array(n);
+  // カーネル生成
+  const kern=[];
+  let ksum=0;
+  for(let i=-halfW;i<=halfW;i++){
+    const v=Math.exp(-i*i/(2*(halfW/2)*(halfW/2)+0.01));
+    kern.push(v); ksum+=v;
+  }
+  for(let r=0;r<n;r++){
+    let s=0;
+    for(let k=0;k<kern.length;k++){
+      const idx=r-halfW+k;
+      if(idx>=0&&idx<n) s+=hist[idx]*kern[k]/ksum;
+    }
+    out[r]=s;
+  }
+  return out;
+}
+
+// ピーク検出 + 近接統合
+function findPeaks(hist, minVal, mergeDist){
+  const n=hist.length;
+  // 局所最大値を検出
+  const candidates=[];
+  for(let r=1;r<n-1;r++){
+    if(hist[r]>=minVal && hist[r]>=hist[r-1] && hist[r]>=hist[r+1]){
+      candidates.push(r);
+    }
+  }
+  if(!candidates.length) return [];
+
+  // 近接統合：mergeDist以内の連続ピークを重みつき平均でまとめる
+  const merged=[];
+  let grp=[candidates[0]];
+  for(let i=1;i<candidates.length;i++){
+    if(candidates[i]-grp[grp.length-1]<=mergeDist){
+      grp.push(candidates[i]);
+    } else {
+      // グループの重みつき中心
+      let sw=0,sc=0;
+      for(const r of grp){ sw+=hist[r]; sc+=r*hist[r]; }
+      merged.push(Math.round(sc/sw));
+      grp=[candidates[i]];
+    }
+  }
+  let sw=0,sc=0;
+  for(const r of grp){ sw+=hist[r]; sc+=r*hist[r]; }
+  merged.push(Math.round(sc/sw));
+
+  return merged;
+}
+
+// ══════════════════════════════════
+//  STEP8: 交点計算
+// ══════════════════════════════════
+function step8_intersections(fLines, bLines, w, h){
+  const pts=[];
+  const mg=5;
+  for(const l1 of fLines){
+    for(const l2 of bLines){
+      const c1=Math.cos(l1.theta), s1=Math.sin(l1.theta);
+      const c2=Math.cos(l2.theta), s2=Math.sin(l2.theta);
+      const det=c1*s2-c2*s1;
+      if(Math.abs(det)<1e-6) continue;
+      const x=(l1.rho*s2-l2.rho*s1)/det;
+      const y=(l2.rho*c1-l1.rho*c2)/det;
+      if(x>=-mg&&x<=w+mg&&y>=-mg&&y<=h+mg) pts.push({x,y});
+    }
+  }
+  return pts;
+}
+
+// ══════════════════════════════════
+//  STEP9: 理想格子描画
+//  赤=／方向  青=＼方向  黄=交点
+//  実検出線は一切描画しない
+// ══════════════════════════════════
+function drawGrid(dw, dh, PW, PH, fLines, bLines, crossPts){
+  octx.clearRect(0,0,dw,dh);
+  if(!S.showGrid) return;
+
+  const sx=dw/PW, sy=dh/PH;
+  const lw=P.lineWidth, dr=P.dotRadius;
+
+  function drawLine(theta, rho, color){
+    const c=Math.cos(theta), s=Math.sin(theta);
+    const pts=[];
+    const addPt=(x,y)=>{ if(x>=-2&&x<=PW+2&&y>=-2&&y<=PH+2) pts.push([x*sx,y*sy]); };
+    if(Math.abs(c)>1e-4){
+      addPt(rho/c, 0);
+      addPt((rho-PH*s)/c, PH);
+    }
+    if(Math.abs(s)>1e-4){
+      addPt(0, rho/s);
+      addPt(PW, (rho-PW*c)/s);
+    }
+    // 重複除去
+    const u=[];
+    for(const p of pts)
+      if(!u.some(q=>Math.abs(q[0]-p[0])<1&&Math.abs(q[1]-p[1])<1)) u.push(p);
+    if(u.length<2) return;
+    octx.strokeStyle=color; octx.lineWidth=lw;
+    octx.beginPath(); octx.moveTo(u[0][0],u[0][1]); octx.lineTo(u[1][0],u[1][1]);
+    octx.stroke();
+  }
+
+  // ／方向 = 赤
+  octx.globalAlpha=0.75;
+  for(const l of fLines) drawLine(l.theta, l.rho, 'rgba(255,60,60,1)');
+
+  // ＼方向 = 青
+  for(const l of bLines) drawLine(l.theta, l.rho, 'rgba(60,130,255,1)');
+
+  // 交点 = 黄
+  octx.globalAlpha=1.0;
+  octx.fillStyle='rgba(255,220,0,0.9)';
+  octx.strokeStyle='rgba(0,0,0,0.5)';
+  octx.lineWidth=1;
+  for(const p of crossPts){
+    octx.beginPath();
+    octx.arc(p.x*sx, p.y*sy, dr, 0, Math.PI*2);
+    octx.fill();
+    octx.stroke();
+  }
+}
+
+// ══════════════════════════════════
+//  二値プレビュー
+// ══════════════════════════════════
+function drawBinary(mask, w, h){
+  const bw=110, bh=Math.round(bw*h/w);
+  bvEl.width=bw; bvEl.height=bh; bvEl.style.height=bh+'px';
   const tmp=document.createElement('canvas');
   tmp.width=w; tmp.height=h;
   const tc=tmp.getContext('2d');
@@ -506,46 +544,12 @@ function drawBinary(mask, w, h) {
 }
 
 // ══════════════════════════════════
-//  オーバーレイ描画
-//  ／=赤  ＼=青
-// ══════════════════════════════════
-function drawOverlay(dw, dh, PW, PH, fLines, bLines) {
-  octx.clearRect(0,0,dw,dh);
-  if (!S.showLines) return;
-
-  const sx=dw/PW, sy=dh/PH, lw=P.lineWidth;
-
-  function drawLine(theta, rho, color) {
-    const c=Math.cos(theta), s=Math.sin(theta);
-    // 4辺との交点を全部求めて画面内2点を選ぶ
-    const pts=[];
-    const addPt=(x,y)=>{
-      if(x>=-1&&x<=PW+1&&y>=-1&&y<=PH+1) pts.push([x*sx, y*sy]);
-    };
-    if(Math.abs(c)>1e-4){ addPt(rho/c, 0); addPt((rho-PH*s)/c, PH); }
-    if(Math.abs(s)>1e-4){ addPt(0, rho/s); addPt(PW, (rho-PW*c)/s); }
-    const u=[];
-    for(const p of pts)
-      if(!u.some(q=>Math.abs(q[0]-p[0])<1&&Math.abs(q[1]-p[1])<1)) u.push(p);
-    if(u.length<2) return;
-    octx.strokeStyle=color; octx.lineWidth=lw;
-    octx.beginPath(); octx.moveTo(u[0][0],u[0][1]); octx.lineTo(u[1][0],u[1][1]);
-    octx.stroke();
-  }
-
-  octx.globalAlpha=0.8;
-  for(const l of fLines) drawLine(l.theta, l.rho, 'rgba(255,60,60,1)');
-  for(const l of bLines) drawLine(l.theta, l.rho, 'rgba(60,130,255,1)');
-  octx.globalAlpha=1;
-}
-
-// ══════════════════════════════════
 //  UI
 // ══════════════════════════════════
 document.getElementById('btn-vis').addEventListener('click',function(){
-  S.showLines=!S.showLines;
-  this.textContent='線表示 '+(S.showLines?'ON':'OFF');
-  this.classList.toggle('on',S.showLines);
+  S.showGrid=!S.showGrid;
+  this.textContent='格子表示 '+(S.showGrid?'ON':'OFF');
+  this.classList.toggle('on',S.showGrid);
 });
 document.getElementById('btn-bin').addEventListener('click',function(){
   S.showBin=!S.showBin;
@@ -556,18 +560,20 @@ document.getElementById('btn-adj').addEventListener('click',()=>{
   document.getElementById('ppanel').classList.toggle('open');
 });
 
-function bindSlider(id,vid,key){
+function bind(id,vid,key){
   const el=document.getElementById(id),vl=document.getElementById(vid);
   el.addEventListener('input',()=>{ P[key]=+el.value; vl.textContent=el.value; });
 }
-bindSlider('p-hmin','v-hmin','hMin');
-bindSlider('p-hmax','v-hmax','hMax');
-bindSlider('p-smin','v-smin','sMin');
-bindSlider('p-vmin','v-vmin','vMin');
-bindSlider('p-hthr','v-hthr','houghThr');
-bindSlider('p-atol','v-atol','angleTol');
-bindSlider('p-mxln','v-mxln','maxLines');
-bindSlider('p-lw',  'v-lw',  'lineWidth');
+bind('p-hmin','v-hmin','hMin');
+bind('p-hmax','v-hmax','hMax');
+bind('p-smin','v-smin','sMin');
+bind('p-vmin','v-vmin','vMin');
+bind('p-asep','v-asep','angleSep');
+bind('p-smth','v-smth','smoothW');
+bind('p-pmerge','v-pmerge','peakMerge');
+bind('p-pmin','v-pmin','peakMinRatio');
+bind('p-lw','v-lw','lineWidth');
+bind('p-dr','v-dr','dotRadius');
 
 bvEl.style.display='none';
 </script>
