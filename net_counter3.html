@@ -135,6 +135,7 @@
             drawClassifiedLines(orangeGroups, true);
 
             cv.imshow('canvasOutput', dst);
+            cv.imshow('canvasOutput', mask);
 
             // メモリ解放
             src.delete(); hsv.delete(); mask.delete(); dst.delete();
