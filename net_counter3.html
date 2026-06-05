@@ -34,57 +34,89 @@
             reader.readAsDataURL(e.target.files[0]);
         });
 
-        function processImage() {
-            // 1. 画像の読み込み
-            let src = cv.imread('canvasInput');
-            let hsv = new cv.Mat();
-            let mask = new cv.Mat();
-            let dst = src.clone();
+function processImageAdvanced() {
+    let src = cv.imread('canvasInput');
+    let hsv = new cv.Mat();
+    let mask = new cv.Mat();
+    let dst = src.clone();
 
-            // 2. 緑色の除去 (HSVでの二値化)
-            cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
-            cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
-            
-            // 緑色の範囲を指定（環境に合わせて要調整）
-            let lowGreen = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [35, 40, 40, 0]);
-            let highGreen = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [85, 255, 255, 255]);
-            cv.inRange(hsv, lowGreen, highGreen, mask);
-            
-            // 反転して「網だけが白(255)」の画像を作る
-            cv.bitwise_not(mask, mask);
+    // 1. グリーンバック除去
+    cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
+    cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
+    let lowGreen = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [35, 40, 40, 0]);
+    let highGreen = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [85, 255, 255, 255]);
+    cv.inRange(hsv, lowGreen, highGreen, mask);
+    cv.bitwise_not(mask, mask); // 網を白に
 
-            // 3. 直線検出 (確率的ハフ変換)
-            let lines = new cv.Mat();
-            // 引数: 入力, 出力, 距離分解能, 角度分解能, 閾値, 最小線長, 最大線隙
-            cv.HoughLinesP(mask, lines, 1, Math.PI / 180, 100, 200, 20);
+    // 2. ご提示いただいたクロージング処理で途切れを結合
+    let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
+    cv.morphologyEx(mask, mask, cv.MORPH_CLOSE, kernel);
 
-            // 4. 直線の描画と色分け
-            for (let i = 0; i < lines.rows; ++i) {
-                let x1 = lines.data32S[i * 4];
-                let y1 = lines.data32S[i * 4 + 1];
-                let x2 = lines.data32S[i * 4 + 2];
-                let y2 = lines.data32S[i * 4 + 3];
-                
-                // 傾きを計算してグループ分け
-                let angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
-                
-                let color;
-                if (angle > 0) {
-                    color = new cv.Scalar(255, 165, 0, 255); // オレンジ (右肩下がり)
-                } else {
-                    color = new cv.Scalar(0, 0, 255, 255);   // 青 (右肩上がり)
-                }
-                
-                cv.line(dst, new cv.Point(x1, y1), new cv.Point(x2, y2), color, 3);
+    // 【オプション】ここで細線化（簡易的な収縮処理でも代用可）を入れるとより安定します
+    // cv.erode(mask, mask, kernel); 
+
+    // 3. パラメータを調整したハフ変換
+    let lines = new cv.Mat();
+    // 閾値: 80, 最小線長: 100, 最大隙間: 60
+    cv.HoughLinesP(mask, lines, 1, Math.PI / 180, 80, 100, 60);
+
+    // 4. 直線のグルーピング（1本化ロジック）
+    let lineGroup = [];
+    const ANGLE_THRESHOLD = 5; // 同じ線とみなす傾きの許容差（度）
+    const DIST_THRESHOLD = 30; // 同じ線とみなす平行線の距離の許容差（ピクセル）
+
+    for (let i = 0; i < lines.rows; ++i) {
+        let x1 = lines.data32S[i * 4];
+        let y1 = lines.data32S[i * 4 + 1];
+        let x2 = lines.data32S[i * 4 + 2];
+        let y2 = lines.data32S[i * 4 + 3];
+
+        // 傾き(a)と切片(b)を計算 (y = ax + b)
+        let angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
+        let a = (x2 - x1) !== 0 ? (y2 - y1) / (x2 - x1) : 9999;
+        let b = y1 - a * x1;
+
+        // 既存のグループに統合できるかチェック
+        let matched = false;
+        for (let group of lineGroup) {
+            if (Math.abs(group.angle - angle) < ANGLE_THRESHOLD && Math.abs(group.b - b) < DIST_THRESHOLD) {
+                // 近い線なのでデータを追加して平均化へ
+                group.lines.push({x1, y1, x2, y2});
+                matched = true;
+                break;
             }
-
-            // 結果の表示
-            cv.imshow('canvasOutput', dst);
-
-            // メモリ解放
-            src.delete(); hsv.delete(); mask.delete(); dst.delete();
-            lines.delete(); lowGreen.delete(); highGreen.delete();
         }
+
+        if (!matched) {
+            lineGroup.push({ angle, a, b, lines: [{x1, y1, x2, y2}] });
+        }
+    }
+
+    // 5. 統合された線を描画（画像の上端から下端までブチ抜く直線にする）
+    lineGroup.forEach(group => {
+        // 代表する傾きと切片の平均を計算（簡易的に最初の1本をベースに計算してもOK）
+        let avgA = group.a;
+        let avgB = group.b;
+
+        // 画像の最上部(y=0)と最下部(y=rows)でのx座標を計算
+        let startY = 0;
+        let startX = Math.round((startY - avgB) / avgA);
+        let endY = dst.rows;
+        let endX = Math.round((endY - avgB) / avgA);
+
+        // 角度で色分け（青 or オレンジ）
+        let color = (group.angle > 0) ? new cv.Scalar(255, 165, 0, 255) : new cv.Scalar(0, 0, 255, 255);
+
+        // 1本の綺麗な直線として描画
+        cv.line(dst, new cv.Point(startX, startY), new cv.Point(endX, endY), color, 3);
+    });
+
+    cv.imshow('canvasOutput', dst);
+
+    // メモリ解放
+    src.delete(); hsv.delete(); mask.delete(); dst.delete();
+    lines.delete(); kernel.delete(); lowGreen.delete(); highGreen.delete();
+}
     </script>
 </body>
 </html>
