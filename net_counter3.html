@@ -2,972 +2,647 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>net_counter3 — Wire Intersection Method</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>網段数カウンター v3</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap');
+  :root{
+    --bg:#0a0f0a;--panel:#111a11;--border:#1e3a1e;
+    --green:#00e676;--amber:#ffab00;--red:#ff1744;
+    --text:#c8e6c9;--text-dim:#558b5e;--green-dark:#004d20;
+    --font:'Courier New',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);
+    height:100dvh;display:flex;flex-direction:column;overflow:hidden;
+    user-select:none;-webkit-user-select:none}
+  #header{display:flex;align-items:center;justify-content:space-between;
+    padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--border);
+    flex-shrink:0;gap:8px}
+  #header h1{font-size:13px;letter-spacing:.15em;color:var(--green);
+    text-transform:uppercase;white-space:nowrap}
+  .sdot{width:8px;height:8px;border-radius:50%;background:var(--text-dim);
+    flex-shrink:0;transition:background .2s}
+  .sdot.on{background:var(--green);box-shadow:0 0 6px var(--green);animation:blink 1.5s infinite}
+  .sdot.lock{background:var(--amber);box-shadow:0 0 6px var(--amber)}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
 
-  :root {
-    --bg:       #0a0c0f;
-    --panel:    #111418;
-    --border:   #1e2329;
-    --accent:   #00e5a0;
-    --accent2:  #ff6b6b;
-    --accent3:  #ffd700;
-    --text:     #c8d0dc;
-    --muted:    #4a5568;
-    --watch:    rgba(0,229,160,0.7);
-    --dot-cand: rgba(255,220,0,0.85);
-    --dot-merge:#ff69b4;
-    --dot-pass: #ff8c00;
-    --row-line: rgba(255,105,180,0.6);
-  }
+  #cam{position:relative;flex:1;overflow:hidden;background:#000}
+  #video{width:100%;height:100%;object-fit:cover;display:block}
+  #ov{position:absolute;inset:0;pointer-events:none}
+  #gcv{position:absolute;right:0;top:0;bottom:0;width:64px;opacity:.9}
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    overflow: hidden;
-  }
+  #topbar{position:absolute;top:0;left:0;right:64px;height:5px;background:rgba(0,0,0,.4)}
+  #topbar-inner{height:100%;width:0%;background:var(--green);transition:width .05s}
 
-  /* ── Header ── */
-  header {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 8px 16px;
-    background: var(--panel);
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-  header h1 {
-    font-family: 'Syne', sans-serif;
-    font-size: 18px;
-    font-weight: 800;
-    color: var(--accent);
-    letter-spacing: 0.05em;
-  }
-  .badge {
-    background: #1a2a20;
-    color: var(--accent);
-    border: 1px solid var(--accent);
-    border-radius: 4px;
-    padding: 2px 8px;
-    font-size: 10px;
-    letter-spacing: 0.1em;
-  }
-  .spacer { flex: 1; }
+  #wl{position:absolute;left:0;right:64px;height:2px;top:50%;
+    transform:translateY(-50%);pointer-events:none}
+  .wl-bar{position:absolute;inset:0;background:var(--green);opacity:.9;
+    box-shadow:0 0 8px var(--green);transition:all .1s}
+  .wl-bar.hit{background:var(--amber);box-shadow:0 0 20px var(--amber),0 0 40px var(--amber)}
+  .wl-lbl{position:absolute;right:8px;top:4px;font-size:10px;
+    color:var(--green);letter-spacing:.1em}
 
-  /* ── Counter Display ── */
-  .counter-box {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: #0d1f17;
-    border: 1px solid var(--accent);
-    border-radius: 6px;
-    padding: 6px 16px;
-  }
-  .counter-label { color: var(--muted); font-size: 10px; }
-  .counter-value {
-    font-family: 'Syne', sans-serif;
-    font-size: 28px;
-    font-weight: 800;
-    color: var(--accent);
-    min-width: 56px;
-    text-align: right;
-    line-height: 1;
-  }
-  .counter-unit { color: var(--muted); font-size: 10px; }
+  #flash{position:absolute;inset:0;background:rgba(0,230,118,.18);
+    opacity:0;pointer-events:none;transition:opacity .05s}
+  #lock-ind{position:absolute;left:8px;top:50%;transform:translateY(-50%);
+    font-size:10px;color:var(--amber);letter-spacing:.1em;opacity:0;
+    background:rgba(0,0,0,.6);padding:2px 6px;border-radius:3px;transition:opacity .2s}
+  #lock-ind.show{opacity:1}
 
-  /* ── Main layout ── */
-  .main {
-    display: flex;
-    flex: 1;
-    overflow: hidden;
-  }
-
-  /* ── Canvas area ── */
-  .canvas-wrap {
-    flex: 1;
-    position: relative;
-    overflow: hidden;
-    background: #000;
-  }
-  video, #overlay {
-    position: absolute;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    object-fit: contain;
-  }
-  #overlay { pointer-events: none; }
-
-  /* ── Watch line indicator ── */
-  .watch-line-label {
-    position: absolute;
-    left: 8px;
-    color: var(--accent);
-    font-size: 10px;
-    pointer-events: none;
-    white-space: nowrap;
-  }
-
-  /* ── Sidebar ── */
-  .sidebar {
-    width: 260px;
-    flex-shrink: 0;
-    background: var(--panel);
-    border-left: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    overflow-y: auto;
-    padding: 12px;
-    gap: 12px;
-  }
-
-  .section-title {
-    font-family: 'Syne', sans-serif;
-    font-size: 10px;
-    font-weight: 700;
-    color: var(--muted);
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    padding-bottom: 6px;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 8px;
-  }
-
-  /* ── Controls ── */
-  .ctrl-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 8px;
-  }
-  .ctrl-label { color: var(--text); font-size: 11px; flex: 1; }
-  .ctrl-val {
-    color: var(--accent);
-    font-size: 11px;
-    min-width: 36px;
-    text-align: right;
-  }
-  input[type=range] {
-    -webkit-appearance: none;
-    width: 100%;
-    height: 3px;
-    background: var(--border);
-    border-radius: 2px;
-    outline: none;
-    margin-bottom: 10px;
-  }
-  input[type=range]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 12px; height: 12px;
-    border-radius: 50%;
-    background: var(--accent);
-    cursor: pointer;
-  }
-
-  /* Toggle button */
-  .toggle-btn {
-    background: var(--border);
-    color: var(--text);
-    border: 1px solid var(--muted);
-    border-radius: 4px;
-    padding: 4px 10px;
-    cursor: pointer;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    transition: all 0.15s;
-    flex: 1;
-  }
-  .toggle-btn.active {
-    background: #1a2a20;
-    color: var(--accent);
-    border-color: var(--accent);
-  }
-  .toggle-btn:hover { border-color: var(--accent); }
-
-  /* Action buttons */
-  .action-btn {
-    width: 100%;
-    padding: 8px;
-    border-radius: 6px;
-    border: none;
-    cursor: pointer;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    font-weight: 700;
-    transition: all 0.15s;
-    letter-spacing: 0.05em;
-  }
-  .btn-primary {
-    background: var(--accent);
-    color: #0a0c0f;
-  }
-  .btn-primary:hover { background: #00c980; }
-  .btn-danger {
-    background: transparent;
-    color: var(--accent2);
-    border: 1px solid var(--accent2);
-  }
-  .btn-danger:hover { background: #2a1212; }
-  .btn-warn {
-    background: transparent;
-    color: var(--accent3);
-    border: 1px solid var(--accent3);
-  }
-  .btn-warn:hover { background: #2a2212; }
-
-  /* ── Log ── */
-  .log-box {
-    background: #070809;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 6px 8px;
-    font-size: 10px;
-    color: var(--muted);
-    flex: 1;
-    overflow-y: auto;
-    min-height: 80px;
-    max-height: 140px;
-    line-height: 1.7;
-  }
-  .log-entry { color: var(--text); }
-  .log-entry.pass { color: var(--accent); }
-  .log-entry.warn { color: var(--accent3); }
-
-  /* ── Stats strip ── */
-  .stats-strip {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-  }
-  .stat-card {
-    background: #070809;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 6px 8px;
-  }
-  .stat-card .sv { 
-    font-family: 'Syne', sans-serif;
-    font-size: 18px; 
-    font-weight: 700;
-    color: var(--accent2); 
-  }
-  .stat-card .sk { font-size: 9px; color: var(--muted); margin-top: 2px; }
-
-  /* ── Method badge ── */
-  .method-info {
-    background: #0d1520;
-    border: 1px solid #1e3050;
-    border-radius: 4px;
-    padding: 8px;
-    font-size: 10px;
-    color: #6a8aaa;
-    line-height: 1.7;
-  }
-  .method-info strong { color: #8ab4d4; }
-
-  /* No-camera state */
-  .no-cam {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    color: var(--muted);
-    font-size: 13px;
-  }
-  .no-cam .icon { font-size: 48px; }
+  #bottom{background:var(--panel);border-top:1px solid var(--border);flex-shrink:0}
+  #count-row{display:flex;align-items:center;justify-content:center;
+    padding:8px 14px 4px;gap:16px}
+  #cnt{font-size:64px;font-weight:700;color:var(--green);letter-spacing:-2px;
+    line-height:1;text-shadow:0 0 20px rgba(0,230,118,.4);
+    transition:color .1s;min-width:3ch;text-align:center}
+  #cnt.bump{color:#fff;text-shadow:0 0 30px rgba(0,230,118,.8)}
+  .clbl{font-size:11px;color:var(--text-dim);letter-spacing:.12em;
+    text-transform:uppercase;line-height:1.4}
+  #mrow{display:flex;padding:4px 14px 6px;gap:6px}
+  .mc{flex:1;background:var(--green-dark);border:1px solid var(--border);
+    border-radius:4px;padding:5px 8px;text-align:center}
+  .mv{font-size:15px;color:var(--text);line-height:1}
+  .ml{font-size:9px;color:var(--text-dim);letter-spacing:.1em;
+    text-transform:uppercase;margin-top:2px}
+  #brow{display:flex;gap:8px;padding:0 14px 8px}
+  .btn{flex:1;padding:9px 4px;border:1px solid var(--border);border-radius:6px;
+    background:transparent;color:var(--text-dim);font-family:var(--font);
+    font-size:11px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;
+    -webkit-tap-highlight-color:transparent;transition:all .15s}
+  .btn:active{transform:scale(.96)}
+  .btn.pri{border-color:var(--green);color:var(--green);background:rgba(0,230,118,.07)}
+  .btn.danger{border-color:var(--red);color:var(--red)}
+  .btn.on{border-color:var(--green);color:var(--green)}
+  #ppanel{padding:0 14px 8px;display:none;flex-direction:column;gap:5px;
+    max-height:52vh;overflow-y:auto}
+  #ppanel.open{display:flex}
+  .pr{display:flex;align-items:center;gap:8px}
+  .pl{font-size:10px;color:var(--text-dim);letter-spacing:.1em;
+    width:130px;flex-shrink:0;text-transform:uppercase}
+  input[type=range]{flex:1;accent-color:var(--green);height:3px}
+  .pv{font-size:12px;color:var(--green);width:38px;text-align:right}
+  .psec{font-size:9px;color:var(--amber);letter-spacing:.15em;
+    text-transform:uppercase;margin-top:4px;margin-bottom:2px;
+    border-top:1px solid var(--border);padding-top:5px}
 </style>
 </head>
 <body>
 
-<!-- ── Header ── -->
-<header>
-  <h1>net_counter<span style="color:#ff6b6b">3</span></h1>
-  <span class="badge">WIRE INTERSECTION</span>
-  <div class="spacer"></div>
-  <div class="counter-box">
-    <span class="counter-label">TOTAL</span>
-    <span class="counter-value" id="totalCount">0</span>
-    <span class="counter-unit">段</span>
+<div id="header">
+  <div class="sdot" id="sdot"></div>
+  <h1>網段数 v3 / 交点検出</h1>
+  <div style="display:flex;gap:8px;align-items:center">
+    <span style="font-size:11px;color:var(--text-dim)" id="fps-lbl">--fps</span>
+    <button class="btn" id="btn-adj"
+      style="flex:none;padding:4px 10px;font-size:10px">⚙ 調整</button>
   </div>
-  <div class="counter-box" style="margin-left:8px;border-color:var(--accent2)">
-    <span class="counter-label">PASS</span>
-    <span class="counter-value" id="passCount" style="color:var(--accent2)">0</span>
-    <span class="counter-unit">段</span>
+</div>
+
+<div id="cam">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="ov" style="position:absolute;inset:0;width:100%;height:100%"></canvas>
+  <canvas id="gcv"></canvas>
+  <div id="topbar"><div id="topbar-inner"></div></div>
+  <div id="wl">
+    <div class="wl-bar" id="wl-bar"></div>
+    <div class="wl-lbl">WATCH LINE</div>
   </div>
-</header>
+  <div id="flash"></div>
+  <div id="lock-ind">■ LOCKED</div>
+</div>
 
-<!-- ── Main ── -->
-<div class="main">
-
-  <!-- Canvas -->
-  <div class="canvas-wrap" id="canvasWrap">
-    <video id="video" autoplay playsinline muted></video>
-    <canvas id="overlay"></canvas>
-    <div class="no-cam" id="noCam">
-      <div class="icon">📷</div>
-      <div>カメラを起動してください</div>
+<div id="bottom">
+  <div id="ppanel">
+    <!-- グリーンバック -->
+    <div class="psec">▸ グリーンバック検出</div>
+    <div class="pr">
+      <span class="pl">緑H下限</span>
+      <input type="range" id="p-hmin" min="60" max="130" value="85">
+      <span class="pv" id="v-hmin">85</span>
     </div>
-    <div class="watch-line-label" id="wlLabel" style="display:none">── WATCH LINE</div>
+    <div class="pr">
+      <span class="pl">緑H上限</span>
+      <input type="range" id="p-hmax" min="140" max="200" value="165">
+      <span class="pv" id="v-hmax">165</span>
+    </div>
+    <div class="pr">
+      <span class="pl">彩度下限</span>
+      <input type="range" id="p-smin" min="5" max="60" value="20">
+      <span class="pv" id="v-smin">20</span>
+    </div>
+    <!-- Hough -->
+    <div class="psec">▸ ワイヤ検出 (Hough)</div>
+    <div class="pr">
+      <span class="pl">累積閾値</span>
+      <input type="range" id="p-hthr" min="5" max="80" value="25">
+      <span class="pv" id="v-hthr">25</span>
+    </div>
+    <div class="pr">
+      <span class="pl">角度許容差(°)</span>
+      <input type="range" id="p-atol" min="3" max="30" value="18">
+      <span class="pv" id="v-atol">18</span>
+    </div>
+    <!-- 交点 -->
+    <div class="psec">▸ 交点検出</div>
+    <div class="pr">
+      <span class="pl">重複統合距離px</span>
+      <input type="range" id="p-mdst" min="2" max="40" value="10">
+      <span class="pv" id="v-mdst">10</span>
+    </div>
+    <div class="pr">
+      <span class="pl">交点最小スコア</span>
+      <input type="range" id="p-mscr" min="1" max="10" value="2">
+      <span class="pv" id="v-mscr">2</span>
+    </div>
+    <!-- 行クラスタ -->
+    <div class="psec">▸ 行クラスタリング</div>
+    <div class="pr">
+      <span class="pl">ΔY 許容px</span>
+      <input type="range" id="p-rtol" min="3" max="40" value="12">
+      <span class="pv" id="v-rtol">12</span>
+    </div>
+    <div class="pr">
+      <span class="pl">最小点数/行</span>
+      <input type="range" id="p-rmin" min="1" max="12" value="3">
+      <span class="pv" id="v-rmin">3</span>
+    </div>
+    <!-- カウント -->
+    <div class="psec">▸ カウント制御</div>
+    <div class="pr">
+      <span class="pl">トリガー段数</span>
+      <input type="range" id="p-trig" min="1" max="15" value="3">
+      <span class="pv" id="v-trig">3</span>
+    </div>
+    <div class="pr">
+      <span class="pl">UNLOCK段数</span>
+      <input type="range" id="p-unlk" min="0" max="10" value="1">
+      <span class="pv" id="v-unlk">1</span>
+    </div>
   </div>
 
-  <!-- Sidebar -->
-  <div class="sidebar">
-
-    <!-- Camera -->
+  <div id="count-row">
     <div>
-      <div class="section-title">カメラ</div>
-      <button class="action-btn btn-primary" id="startBtn" onclick="startCamera()">▶ カメラ起動</button>
-      <div style="height:6px"></div>
-      <select id="camSelect" style="width:100%;background:var(--border);color:var(--text);border:1px solid var(--muted);border-radius:4px;padding:5px;font-family:inherit;font-size:11px;margin-bottom:6px">
-        <option value="">デバイスを選択...</option>
-      </select>
-      <div class="ctrl-row" style="margin-bottom:0">
-        <button class="toggle-btn" id="mirrorBtn" onclick="toggleMirror()">ミラー</button>
-        <button class="toggle-btn active" id="debugBtn" onclick="toggleDebug()">デバッグ</button>
-      </div>
+      <div class="clbl">段数</div>
+      <div class="clbl" style="color:var(--text-dim);font-size:9px">ROWS</div>
     </div>
-
-    <!-- Counter controls -->
-    <div>
-      <div class="section-title">カウント制御</div>
-      <div style="display:flex;gap:6px;margin-bottom:6px">
-        <button class="action-btn btn-danger" onclick="resetCount()">↺ リセット</button>
-        <button class="action-btn btn-warn" onclick="pauseResume()" id="pauseBtn">⏸ 停止</button>
-      </div>
+    <div id="cnt">0</div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <button class="btn danger" id="btn-rst" style="padding:6px 12px">RESET</button>
+      <button class="btn" id="btn-m1"  style="padding:6px 12px">-1</button>
     </div>
+  </div>
 
-    <!-- Green detection -->
-    <div>
-      <div class="section-title">グリーンバック検出</div>
-      <div class="ctrl-row"><span class="ctrl-label">Hue 下限</span><span class="ctrl-val" id="vHueL">35</span></div>
-      <input type="range" min="0" max="60" value="35" id="hueL" oninput="syncParam('hueL','vHueL',this.value)">
-      <div class="ctrl-row"><span class="ctrl-label">Hue 上限</span><span class="ctrl-val" id="vHueH">85</span></div>
-      <input type="range" min="60" max="120" value="85" id="hueH" oninput="syncParam('hueH','vHueH',this.value)">
-      <div class="ctrl-row"><span class="ctrl-label">彩度 下限</span><span class="ctrl-val" id="vSatL">60</span></div>
-      <input type="range" min="0" max="150" value="60" id="satL" oninput="syncParam('satL','vSatL',this.value)">
-    </div>
+  <div id="mrow">
+    <div class="mc"><div class="mv" id="m-xpts">0</div><div class="ml">交点数</div></div>
+    <div class="mc"><div class="mv" id="m-rows">0</div><div class="ml">検出段</div></div>
+    <div class="mc"><div class="mv" id="m-state">WAIT</div><div class="ml">状態</div></div>
+    <div class="mc"><div class="mv" id="m-intv">--</div><div class="ml">間隔(s)</div></div>
+  </div>
 
-    <!-- Wire detection -->
-    <div>
-      <div class="section-title">ワイヤ検出 (Hough)</div>
-      <div class="ctrl-row"><span class="ctrl-label">累積閾値</span><span class="ctrl-val" id="vHoughTh">60</span></div>
-      <input type="range" min="20" max="200" value="60" id="houghTh" oninput="syncParam('houghTh','vHoughTh',this.value)">
-      <div class="ctrl-row"><span class="ctrl-label">角度許容差(°)</span><span class="ctrl-val" id="vAngleTol">15</span></div>
-      <input type="range" min="3" max="30" value="15" id="angleTol" oninput="syncParam('angleTol','vAngleTol',this.value)">
-      <div class="ctrl-row"><span class="ctrl-label">最小線長(px)</span><span class="ctrl-val" id="vMinLen">30</span></div>
-      <input type="range" min="10" max="120" value="30" id="minLen" oninput="syncParam('minLen','vMinLen',this.value)">
-    </div>
+  <div id="brow">
+    <button class="btn pri" id="btn-start">▶ カメラ開始</button>
+    <button class="btn" id="btn-vis">交点表示</button>
+  </div>
+</div>
 
-    <!-- Intersection -->
-    <div>
-      <div class="section-title">交点検出</div>
-      <div class="ctrl-row"><span class="ctrl-label">重複統合距離(px)</span><span class="ctrl-val" id="vMergeDist">12</span></div>
-      <input type="range" min="2" max="40" value="12" id="mergeDist" oninput="syncParam('mergeDist','vMergeDist',this.value)">
-      <div class="ctrl-row"><span class="ctrl-label">交点最小スコア</span><span class="ctrl-val" id="vMinScore">1</span></div>
-      <input type="range" min="1" max="5" value="1" id="minScore" oninput="syncParam('minScore','vMinScore',this.value)">
-    </div>
-
-    <!-- Row clustering -->
-    <div>
-      <div class="section-title">行クラスタリング</div>
-      <div class="ctrl-row"><span class="ctrl-label">ΔY 許容(px)</span><span class="ctrl-val" id="vRowTol">18</span></div>
-      <input type="range" min="4" max="60" value="18" id="rowTol" oninput="syncParam('rowTol','vRowTol',this.value)">
-      <div class="ctrl-row"><span class="ctrl-label">最小点数/行</span><span class="ctrl-val" id="vMinPts">2</span></div>
-      <input type="range" min="1" max="10" value="2" id="minPts" oninput="syncParam('minPts','vMinPts',this.value)">
-    </div>
-
-    <!-- Watch line -->
-    <div>
-      <div class="section-title">WATCH LINE</div>
-      <div class="ctrl-row"><span class="ctrl-label">位置(%)</span><span class="ctrl-val" id="vWatchPos">50</span></div>
-      <input type="range" min="10" max="90" value="50" id="watchPos" oninput="syncParam('watchPos','vWatchPos',this.value)">
-      <div class="ctrl-row"><span class="ctrl-label">通過帯域(px)</span><span class="ctrl-val" id="vWatchBand">6</span></div>
-      <input type="range" min="2" max="20" value="6" id="watchBand" oninput="syncParam('watchBand','vWatchBand',this.value)">
-    </div>
-
-    <!-- Stats -->
-    <div>
-      <div class="section-title">統計</div>
-      <div class="stats-strip">
-        <div class="stat-card"><div class="sv" id="sCandPts">0</div><div class="sk">候補点</div></div>
-        <div class="stat-card"><div class="sv" id="sMergePts">0</div><div class="sk">統合後</div></div>
-        <div class="stat-card"><div class="sv" id="sRowCnt">0</div><div class="sk">検出段数</div></div>
-        <div class="stat-card"><div class="sv" id="sFps">0</div><div class="sk">FPS</div></div>
-      </div>
-    </div>
-
-    <!-- Method info -->
-    <div class="method-info">
-      <strong>アルゴリズム: Wire Intersection</strong><br>
-      STEP1 HSV二値化<br>
-      STEP2 Hough変換で方向推定<br>
-      STEP3 ／＼ワイヤ群抽出<br>
-      STEP4 交点候補生成<br>
-      STEP5 近傍統合(mergeDist)<br>
-      STEP6 行クラスタリング<br>
-      STEP7 WATCH LINE通過検出
-    </div>
-
-    <!-- Log -->
-    <div>
-      <div class="section-title">ログ</div>
-      <div class="log-box" id="logBox"></div>
-    </div>
-
-  </div><!-- /sidebar -->
-</div><!-- /main -->
-
-<!-- ══════════════════ JAVASCRIPT ══════════════════ -->
 <script>
-// ── State ─────────────────────────────────────────
-const state = {
-  stream: null,
-  running: false,
-  paused: false,
-  mirror: false,
-  debug: true,
-  totalCount: 0,
-  passCount: 0,
-  frameCount: 0,
-  lastFpsTime: 0,
-  fps: 0,
-  // algorithm params
-  hueL: 35, hueH: 85, satL: 60,
-  houghTh: 60, angleTol: 15, minLen: 30,
-  mergeDist: 12, minScore: 1,
-  rowTol: 18, minPts: 2,
-  watchPos: 50, watchBand: 6,
-  // tracking
-  prevRows: [],      // rows from previous frame [{yMean, xs:[]}]
-  passedRows: new Set(),  // row IDs that already passed
-  rowIdCounter: 0,
+// ══════════════════════════════════════════
+//  パラメータ
+// ══════════════════════════════════════════
+const P = {
+  hMin:85, hMax:165, sMin:20,   // 緑HSV
+  houghThr:25, angleTol:18,      // Hough
+  mergeDist:10, minScore:2,      // 交点
+  rowTol:12, rowMin:3,           // 行クラスタ
+  trigRows:3, unlockRows:1,      // カウント
 };
 
-// Working canvases
-let procCanvas, procCtx;
-let video, overlay, overlayCtx;
+const S = {
+  running:false, count:0,
+  phase:'WAIT', lastCountTime:0,
+  showVis:false,
+  fc:0, fpsT:0,
+};
 
-// ── UI helpers ─────────────────────────────────────
-function syncParam(key, labelId, val) {
-  state[key] = parseFloat(val);
-  document.getElementById(labelId).textContent = val;
-}
-function toggleMirror() {
-  state.mirror = !state.mirror;
-  document.getElementById('mirrorBtn').classList.toggle('active', state.mirror);
-  video.style.transform = state.mirror ? 'scaleX(-1)' : '';
-}
-function toggleDebug() {
-  state.debug = !state.debug;
-  document.getElementById('debugBtn').classList.toggle('active', state.debug);
-}
-function pauseResume() {
-  state.paused = !state.paused;
-  document.getElementById('pauseBtn').textContent = state.paused ? '▶ 再開' : '⏸ 停止';
-}
-function resetCount() {
-  state.totalCount = 0;
-  state.passCount = 0;
-  state.passedRows = new Set();
-  state.rowIdCounter = 0;
-  document.getElementById('totalCount').textContent = '0';
-  document.getElementById('passCount').textContent = '0';
-  addLog('カウントリセット', 'warn');
-}
-function addLog(msg, type='') {
-  const lb = document.getElementById('logBox');
-  const d = new Date();
-  const ts = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`;
-  const el = document.createElement('div');
-  el.className = 'log-entry ' + type;
-  el.textContent = `[${ts}] ${msg}`;
-  lb.prepend(el);
-  while (lb.children.length > 40) lb.removeChild(lb.lastChild);
-}
+const GHIST = 120;
+const gHist = new Float32Array(GHIST);
+let gIdx = 0;
 
-// ── Camera ─────────────────────────────────────────
-async function populateCams() {
-  const devs = await navigator.mediaDevices.enumerateDevices();
-  const sel = document.getElementById('camSelect');
-  devs.filter(d => d.kind === 'videoinput').forEach(d => {
-    const opt = document.createElement('option');
-    opt.value = d.deviceId;
-    opt.textContent = d.label || `Camera ${sel.options.length}`;
-    sel.appendChild(opt);
-  });
-}
-async function startCamera() {
+const video    = document.getElementById('video');
+const ovEl     = document.getElementById('ov');
+const octx     = ovEl.getContext('2d');
+const gcv      = document.getElementById('gcv');
+const gctx     = gcv.getContext('2d');
+const wlBar    = document.getElementById('wl-bar');
+const flashEl  = document.getElementById('flash');
+const lockInd  = document.getElementById('lock-ind');
+const sdot     = document.getElementById('sdot');
+const cntEl    = document.getElementById('cnt');
+const fpsLbl   = document.getElementById('fps-lbl');
+const topbarIn = document.getElementById('topbar-inner');
+const mXpts    = document.getElementById('m-xpts');
+const mRows    = document.getElementById('m-rows');
+const mState   = document.getElementById('m-state');
+const mIntv    = document.getElementById('m-intv');
+
+const proc  = document.createElement('canvas');
+const pctx  = proc.getContext('2d', {willReadFrequently:true});
+
+// ══════════════════════════════════════════
+//  カメラ起動
+// ══════════════════════════════════════════
+let started = false;
+document.getElementById('btn-start').addEventListener('click', async () => {
+  if (started) return; started = true;
   try {
-    if (state.stream) { state.stream.getTracks().forEach(t => t.stop()); }
-    const sel = document.getElementById('camSelect');
-    const constraints = {
-      video: sel.value ? { deviceId: { exact: sel.value } } : { facingMode: 'environment' },
-      audio: false
-    };
-    state.stream = await navigator.mediaDevices.getUserMedia(constraints);
-    video.srcObject = state.stream;
-    await video.play();
-    document.getElementById('noCam').style.display = 'none';
-    document.getElementById('wlLabel').style.display = 'block';
-    if (!state.running) { state.running = true; requestAnimationFrame(processFrame); }
-    addLog('カメラ起動', 'pass');
-    await populateCams();
-  } catch(e) {
-    addLog('カメラエラー: ' + e.message, 'warn');
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}
+    });
+    video.srcObject = stream; await video.play();
+    S.running = true; sdot.className = 'sdot on';
+    document.getElementById('btn-start').textContent = '■ 停止';
+    document.getElementById('btn-start').classList.remove('pri');
+    requestAnimationFrame(loop);
+  } catch(e){ alert('カメラエラー: '+e.message); started=false; }
+});
+
+// ══════════════════════════════════════════
+//  メインループ
+// ══════════════════════════════════════════
+function loop(ts){
+  if (!S.running) return;
+  requestAnimationFrame(loop);
+
+  S.fc++;
+  if (ts - S.fpsT > 1000){
+    fpsLbl.textContent = S.fc + 'fps';
+    S.fc = 0; S.fpsT = ts;
   }
-}
-
-// ── Processing canvas setup ─────────────────────────
-function ensureProc(w, h) {
-  if (!procCanvas || procCanvas.width !== w || procCanvas.height !== h) {
-    procCanvas = document.createElement('canvas');
-    procCanvas.width = w; procCanvas.height = h;
-    procCtx = procCanvas.getContext('2d', { willReadFrequently: true });
-  }
-}
-
-// ── Main frame loop ─────────────────────────────────
-function processFrame(ts) {
-  if (!state.running) return;
-  requestAnimationFrame(processFrame);
-  if (state.paused || video.readyState < 2) return;
-
-  // FPS
-  state.frameCount++;
-  if (ts - state.lastFpsTime >= 1000) {
-    state.fps = state.frameCount;
-    state.frameCount = 0;
-    state.lastFpsTime = ts;
-    document.getElementById('sFps').textContent = state.fps;
-  }
-
+  if (video.readyState < 2) return;
   const vw = video.videoWidth, vh = video.videoHeight;
   if (!vw || !vh) return;
 
-  // Scale down for processing (speed)
-  const scale = Math.min(1, 480 / Math.max(vw, vh));
-  const pw = Math.round(vw * scale), ph = Math.round(vh * scale);
-
-  ensureProc(pw, ph);
-  procCtx.drawImage(video, 0, 0, pw, ph);
-  const imgData = procCtx.getImageData(0, 0, pw, ph);
-
-  // ── STEP 1: Green mask ──────────────────────────
-  const wireMask = buildWireMask(imgData, pw, ph);
-
-  // ── STEP 2+3: Wire extraction via fast rho-theta accumulation ──
-  const { fwires, bwires } = extractWireLines(wireMask, pw, ph);
-
-  // ── STEP 4: Intersections ──────────────────────
-  const candidates = computeIntersections(fwires, bwires, pw, ph);
-
-  // ── STEP 5: Merge duplicates ───────────────────
-  const merged = mergeClusters(candidates, state.mergeDist);
-
-  // ── STEP 6: Row clustering ─────────────────────
-  const rows = clusterRows(merged, state.rowTol, state.minPts);
-
-  // ── STEP 7: WATCH LINE ─────────────────────────
-  const watchY = ph * state.watchPos / 100;
-  const newPasses = detectPasses(rows, watchY, scale);
-  state.passCount += newPasses;
-  if (newPasses > 0) {
-    document.getElementById('passCount').textContent = state.passCount;
-    addLog(`WATCH LINE通過: +${newPasses}段 (累計${state.passCount})`, 'pass');
+  const dw = video.clientWidth, dh = video.clientHeight;
+  if (ovEl.width !== dw || ovEl.height !== dh){
+    ovEl.width = dw; ovEl.height = dh;
+    gcv.width = 64; gcv.height = dh;
   }
 
-  // Update stats
-  state.totalCount = rows.length;
-  document.getElementById('totalCount').textContent = rows.length;
-  document.getElementById('sCandPts').textContent = candidates.length;
-  document.getElementById('sMergePts').textContent = merged.length;
-  document.getElementById('sRowCnt').textContent = rows.length;
+  // 処理解像度（速度と精度のバランス）
+  const PW = 240, PH = Math.round(vh/vw*PW);
+  proc.width = PW; proc.height = PH;
+  pctx.drawImage(video, 0, 0, PW, PH);
+  const imgData = pctx.getImageData(0, 0, PW, PH);
 
-  // ── DRAW ──────────────────────────────────────
-  syncOverlay();
-  if (state.debug) {
-    drawDebug(candidates, merged, rows, watchY, scale, pw, ph);
-  } else {
-    drawMinimal(rows, watchY, scale, pw, ph);
+  // ── STEP1: ワイヤマスク ──
+  const wireMask = buildWireMask(imgData, PW, PH);
+
+  // ── STEP2+3: Houghでワイヤ群抽出 ──
+  const {fLines, bLines} = extractWireLines(wireMask, PW, PH);
+
+  // ── STEP4: 交点候補生成 ──
+  const candidates = computeIntersections(fLines, bLines, PW, PH);
+
+  // ── STEP5: 重複統合 ──
+  const merged = mergeClusters(candidates, P.mergeDist);
+
+  // ── STEP6: 行クラスタリング ──
+  const rows = clusterRows(merged, P.rowTol, P.rowMin);
+
+  // ── STEP7: WATCH LINE検出 ──
+  const WY = PH / 2;
+  const band = P.rowTol + 4;
+  let wlRows = 0;
+  for (const row of rows){
+    if (Math.abs(row.yMean - WY) <= band) wlRows++;
   }
+
+  detectCount(wlRows);
+
+  // UI更新
+  gHist[gIdx % GHIST] = wlRows; gIdx++;
+  mXpts.textContent  = merged.length;
+  mRows.textContent  = rows.length;
+  mState.textContent = S.phase;
+  const barPct = Math.min(100, wlRows / Math.max(P.trigRows*2,1) * 100);
+  topbarIn.style.width      = barPct + '%';
+  topbarIn.style.background = wlRows >= P.trigRows ? 'var(--amber)' : 'var(--green)';
+
+  drawOverlay(dw, dh, PW, PH, candidates, merged, rows, WY, band);
+  drawGraph(dh, wlRows);
 }
 
-// ── STEP 1: Wire mask from HSV green detection ──────
-function buildWireMask(imgData, w, h) {
-  const data = imgData.data;
+// ══════════════════════════════════════════
+//  STEP1: HSV → ワイヤマスク
+// ══════════════════════════════════════════
+function buildWireMask(imgData, w, h){
+  const d = imgData.data;
   const mask = new Uint8Array(w * h);
-  const hl = state.hueL / 360, hh = state.hueH / 360;
-  const sl = state.satL / 255;
-  for (let i = 0; i < w * h; i++) {
-    const r = data[i*4]/255, g = data[i*4+1]/255, b = data[i*4+2]/255;
-    const [h2,s,v] = rgb2hsv(r,g,b);
-    const isGreen = h2 >= hl && h2 <= hh && s >= sl && v > 0.15;
-    mask[i] = isGreen ? 0 : 1;  // 1 = wire
+  const hl = P.hMin, hh = P.hMax, sl = P.sMin / 100;
+  for (let i = 0; i < w*h; i++){
+    const r = d[i*4]/255, g = d[i*4+1]/255, b = d[i*4+2]/255;
+    const mx = Math.max(r,g,b), mn = Math.min(r,g,b), delta = mx - mn;
+    if (delta < 0.01 || mx < 0.15){ mask[i] = 1; continue; } // 暗い→ワイヤ
+    let hue = 0;
+    if      (mx === g) hue = 60*((b-r)/delta) + 120;
+    else if (mx === r) hue = (60*((g-b)/delta) + 360) % 360;
+    else               hue = 60*((r-g)/delta) + 240;
+    const sat = delta / mx;
+    // 緑でなければワイヤ
+    if (!(hue >= hl && hue <= hh && sat >= sl)) mask[i] = 1;
   }
   return mask;
 }
 
-function rgb2hsv(r,g,b) {
-  const max = Math.max(r,g,b), min = Math.min(r,g,b), d = max - min;
-  let h = 0;
-  if (d > 0) {
-    if (max === r) h = ((g-b)/d + 6) % 6;
-    else if (max === g) h = (b-r)/d + 2;
-    else h = (r-g)/d + 4;
-    h /= 6;
-  }
-  return [h, max > 0 ? d/max : 0, max];
-}
+// ══════════════════════════════════════════
+//  STEP2+3: 簡易Houghでワイヤ直線群抽出
+//  ／方向(fLines) と ＼方向(bLines) を分離
+// ══════════════════════════════════════════
+function extractWireLines(mask, w, h){
+  const TSTEP = 1; // 1度刻み
+  const diagLen = Math.ceil(Math.sqrt(w*w+h*h));
+  const rhoOff  = diagLen;
+  const rhoSize = diagLen * 2 + 1;
+  const AT = P.angleTol;
 
-// ── STEP 2+3: Wire line extraction via accumulator ──
-// Simplified Hough: for each wire pixel, vote in (rho, theta) space
-// Then extract peaks → line parameters
-function extractWireLines(mask, w, h) {
-  const AT = state.angleTol;
-  // We look for two line families:
-  // forward-slash (/): ~45±AT degrees
-  // backslash (\): ~135±AT degrees  (or equivalently ~-45±AT)
+  // ／方向: 40〜80° (右上がり)
+  // ＼方向: 100〜140° (右下がり)
+  const fRange = []; for(let t=40-AT;t<=80+AT;t+=TSTEP) fRange.push(t);
+  const bRange = []; for(let t=100-AT;t<=140+AT;t+=TSTEP) bRange.push(t);
 
-  // Use a mini Hough accumulator
-  const thetaSteps = 180;
-  const dTheta = Math.PI / thetaSteps;
-  const diagLen = Math.sqrt(w*w + h*h);
-  const rhoSteps = Math.ceil(diagLen * 2);
-  const rhoOff = Math.ceil(diagLen);
+  // cos/sinテーブル
+  const cosT = {}, sinT = {};
+  [...fRange,...bRange].forEach(t=>{
+    const r = t*Math.PI/180;
+    cosT[t] = Math.cos(r); sinT[t] = Math.sin(r);
+  });
 
-  // Focus only on the two angular ranges we care about
-  const fSlashRange = []; // / family: ~40-80 deg
-  const bSlashRange = []; // \ family: ~100-140 deg
+  const fAcc = new Int32Array(fRange.length * rhoSize);
+  const bAcc = new Int32Array(bRange.length * rhoSize);
 
-  for (let t = 0; t < thetaSteps; t++) {
-    const deg = t;
-    if (deg >= 40 - AT && deg <= 80 + AT) fSlashRange.push(t);
-    if (deg >= 100 - AT && deg <= 140 + AT) bSlashRange.push(t);
-  }
-
-  // Accumulate (subsample for speed)
-  const step = 3;
-  const fAcc = new Int32Array(thetaSteps * rhoSteps);
-  const bAcc = new Int32Array(thetaSteps * rhoSteps);
-
-  const cosT = new Float32Array(thetaSteps);
-  const sinT = new Float32Array(thetaSteps);
-  for (let t = 0; t < thetaSteps; t++) {
-    cosT[t] = Math.cos(t * dTheta);
-    sinT[t] = Math.sin(t * dTheta);
-  }
-
-  for (let y = 0; y < h; y += step) {
-    for (let x = 0; x < w; x += step) {
-      if (!mask[y*w+x]) continue;
-      for (const t of fSlashRange) {
-        const rho = Math.round(x * cosT[t] + y * sinT[t]) + rhoOff;
-        if (rho >= 0 && rho < rhoSteps) fAcc[t * rhoSteps + rho]++;
-      }
-      for (const t of bSlashRange) {
-        const rho = Math.round(x * cosT[t] + y * sinT[t]) + rhoOff;
-        if (rho >= 0 && rho < rhoSteps) bAcc[t * rhoSteps + rho]++;
-      }
+  const step = 2; // 間引き
+  for(let y=0;y<h;y+=step){
+    for(let x=0;x<w;x+=step){
+      if(!mask[y*w+x]) continue;
+      fRange.forEach((t,ti)=>{
+        const rho = Math.round(x*cosT[t]+y*sinT[t]) + rhoOff;
+        if(rho>=0&&rho<rhoSize) fAcc[ti*rhoSize+rho]++;
+      });
+      bRange.forEach((t,ti)=>{
+        const rho = Math.round(x*cosT[t]+y*sinT[t]) + rhoOff;
+        if(rho>=0&&rho<rhoSize) bAcc[ti*rhoSize+rho]++;
+      });
     }
   }
 
-  // Extract peaks for each family
-  const th = Math.max(5, state.houghTh / (step * step));
-  const fwires = extractPeaks(fAcc, fSlashRange, rhoSteps, rhoOff, th, dTheta, cosT, sinT, w, h);
-  const bwires = extractPeaks(bAcc, bSlashRange, rhoSteps, rhoOff, th, dTheta, cosT, sinT, w, h);
-
-  return { fwires, bwires };
+  const thr = Math.max(3, P.houghThr / (step*step));
+  const fLines = peakLines(fAcc, fRange, rhoSize, rhoOff, thr);
+  const bLines = peakLines(bAcc, bRange, rhoSize, rhoOff, thr);
+  return {fLines, bLines};
 }
 
-function extractPeaks(acc, tRange, rhoSteps, rhoOff, threshold, dTheta, cosT, sinT, w, h) {
-  const lines = [];
-  const suppress = new Uint8Array(tRange.length * rhoSteps);
-  const dRho = 4; // non-max suppression radius in rho
-  const dT = 2;   // in theta
-
-  // Collect all peaks above threshold
+function peakLines(acc, tRange, rhoSize, rhoOff, thr){
   const peaks = [];
-  for (let ti = 0; ti < tRange.length; ti++) {
-    const t = tRange[ti];
-    for (let r = 0; r < rhoSteps; r++) {
-      const v = acc[t * rhoSteps + r];
-      if (v >= threshold) peaks.push({ v, t, r, ti });
+  for(let ti=0;ti<tRange.length;ti++){
+    for(let r=0;r<rhoSize;r++){
+      const v = acc[ti*rhoSize+r];
+      if(v >= thr) peaks.push({ti, r, v});
     }
   }
-  peaks.sort((a,b) => b.v - a.v);
+  peaks.sort((a,b)=>b.v-a.v);
 
   const used = new Set();
-  for (const pk of peaks) {
+  const lines = [];
+  const DR=5, DT=3;
+  for(const pk of peaks){
     const key = `${pk.ti}_${pk.r}`;
-    if (used.has(key)) continue;
-    // Suppress neighborhood
-    for (let dt = -dT; dt <= dT; dt++) {
-      for (let dr = -dRho; dr <= dRho; dr++) {
+    if(used.has(key)) continue;
+    for(let dt=-DT;dt<=DT;dt++)
+      for(let dr=-DR;dr<=DR;dr++)
         used.add(`${pk.ti+dt}_${pk.r+dr}`);
-      }
-    }
-    const theta = pk.t * dTheta;
-    const rho = pk.r - rhoOff;
-    lines.push({ theta, rho, score: pk.v });
+    const theta = tRange[pk.ti] * Math.PI / 180;
+    const rho   = pk.r - rhoOff;
+    lines.push({theta, rho, score:pk.v});
   }
-
   return lines;
 }
 
-// ── STEP 4: Compute intersections ───────────────────
-function computeIntersections(fwires, bwires, w, h) {
+// ══════════════════════════════════════════
+//  STEP4: 交点候補生成
+// ══════════════════════════════════════════
+function computeIntersections(fLines, bLines, w, h){
   const pts = [];
-  const margin = -10;
-  for (const l1 of fwires) {
-    for (const l2 of bwires) {
-      const pt = lineIntersect(l1, l2);
-      if (!pt) continue;
-      if (pt.x < margin || pt.x > w-margin || pt.y < margin || pt.y > h-margin) continue;
+  const mg = 5;
+  for(const l1 of fLines){
+    for(const l2 of bLines){
+      const c1=Math.cos(l1.theta), s1=Math.sin(l1.theta);
+      const c2=Math.cos(l2.theta), s2=Math.sin(l2.theta);
+      const det = c1*s2 - c2*s1;
+      if(Math.abs(det)<1e-6) continue;
+      const x = (l1.rho*s2 - l2.rho*s1)/det;
+      const y = (l2.rho*c1 - l1.rho*c2)/det;
+      if(x<-mg||x>w+mg||y<-mg||y>h+mg) continue;
       const score = Math.min(l1.score, l2.score);
-      if (score < state.minScore) continue;
-      pts.push({ x: pt.x, y: pt.y, score });
+      if(score < P.minScore) continue;
+      pts.push({x, y, score});
     }
   }
   return pts;
 }
 
-function lineIntersect(l1, l2) {
-  // Lines: x*cos(t)+y*sin(t) = rho
-  const c1 = Math.cos(l1.theta), s1 = Math.sin(l1.theta);
-  const c2 = Math.cos(l2.theta), s2 = Math.sin(l2.theta);
-  const det = c1*s2 - c2*s1;
-  if (Math.abs(det) < 1e-6) return null;
-  return {
-    x: (l1.rho*s2 - l2.rho*s1) / det,
-    y: (l2.rho*c1 - l1.rho*c2) / det
-  };
-}
-
-// ── STEP 5: Merge nearby points ──────────────────────
-function mergeClusters(pts, dist) {
-  if (!pts.length) return [];
-  const D2 = dist * dist;
+// ══════════════════════════════════════════
+//  STEP5: 近傍統合
+// ══════════════════════════════════════════
+function mergeClusters(pts, dist){
+  if(!pts.length) return [];
+  const D2 = dist*dist;
   const used = new Uint8Array(pts.length);
   const result = [];
-
-  for (let i = 0; i < pts.length; i++) {
-    if (used[i]) continue;
-    let sx = pts[i].x, sy = pts[i].y, sc = pts[i].score, n = 1;
-    used[i] = 1;
-    for (let j = i+1; j < pts.length; j++) {
-      if (used[j]) continue;
-      const dx = pts[j].x - pts[i].x, dy = pts[j].y - pts[i].y;
-      if (dx*dx + dy*dy <= D2) {
-        sx += pts[j].x; sy += pts[j].y; sc += pts[j].score; n++;
-        used[j] = 1;
-      }
+  for(let i=0;i<pts.length;i++){
+    if(used[i]) continue;
+    let sx=pts[i].x, sy=pts[i].y, sc=pts[i].score, n=1;
+    used[i]=1;
+    for(let j=i+1;j<pts.length;j++){
+      if(used[j]) continue;
+      const dx=pts[j].x-pts[i].x, dy=pts[j].y-pts[i].y;
+      if(dx*dx+dy*dy<=D2){ sx+=pts[j].x; sy+=pts[j].y; sc+=pts[j].score; n++; used[j]=1; }
     }
-    result.push({ x: sx/n, y: sy/n, score: sc, n });
+    result.push({x:sx/n, y:sy/n, score:sc, n});
   }
   return result;
 }
 
-// ── STEP 6: Row clustering by Y ────────────────────
-// Sort by Y, group with tolerance, filter by minPts
-function clusterRows(pts, tol, minPts) {
-  if (!pts.length) return [];
-  const sorted = [...pts].sort((a,b) => a.y - b.y);
+// ══════════════════════════════════════════
+//  STEP6: 行クラスタリング (Y座標)
+// ══════════════════════════════════════════
+function clusterRows(pts, tol, minPts){
+  if(!pts.length) return [];
+  const sorted = [...pts].sort((a,b)=>a.y-b.y);
   const rows = [];
   let cur = [sorted[0]];
-
-  for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i].y - cur[cur.length-1].y <= tol) {
-      cur.push(sorted[i]);
-    } else {
-      if (cur.length >= minPts) rows.push(cur);
-      cur = [sorted[i]];
-    }
+  for(let i=1;i<sorted.length;i++){
+    if(sorted[i].y - cur[cur.length-1].y <= tol) cur.push(sorted[i]);
+    else{ if(cur.length>=minPts) rows.push(cur); cur=[sorted[i]]; }
   }
-  if (cur.length >= minPts) rows.push(cur);
+  if(cur.length>=minPts) rows.push(cur);
 
-  // Sort each row by X, compute mean Y
-  return rows.map(r => {
-    r.sort((a,b) => a.x - b.x);
-    const yMean = r.reduce((s,p) => s+p.y, 0) / r.length;
-    return { pts: r, yMean, id: state.rowIdCounter++ };
+  return rows.map(r=>{
+    r.sort((a,b)=>a.x-b.x);
+    const yMean = r.reduce((s,p)=>s+p.y,0)/r.length;
+    return {pts:r, yMean};
   });
 }
 
-// ── STEP 7: WATCH LINE detection ────────────────────
-function detectPasses(rows, watchY, scale) {
-  const band = state.watchBand;
-  let newPasses = 0;
-  for (const row of rows) {
-    // Check if row's yMean is within watch band
-    if (Math.abs(row.yMean - watchY) <= band) {
-      const key = Math.round(row.yMean * 10); // stable key
-      if (!state.passedRows.has(key)) {
-        state.passedRows.add(key);
-        newPasses++;
-      }
+// ══════════════════════════════════════════
+//  ステートマシン（v2と同じ構造）
+// ══════════════════════════════════════════
+function detectCount(wlRows){
+  if(S.phase==='LOCKED'){
+    if(wlRows<=P.unlockRows){
+      S.phase='WAIT';
+      wlBar.classList.remove('hit');
+      lockInd.classList.remove('show');
+      sdot.className='sdot on';
     }
+    return;
   }
-  // Clean old keys
-  if (state.passedRows.size > 500) state.passedRows.clear();
-  return newPasses;
+  if(wlRows>=P.trigRows) triggerCount();
+}
+function triggerCount(){
+  const now = Date.now();
+  if(S.lastCountTime>0) mIntv.textContent=((now-S.lastCountTime)/1000).toFixed(1);
+  S.lastCountTime=now;
+  S.count++; cntEl.textContent=S.count;
+  S.phase='LOCKED';
+  wlBar.classList.add('hit'); lockInd.classList.add('show');
+  sdot.className='sdot lock';
+  flashEl.style.opacity='1'; setTimeout(()=>flashEl.style.opacity='0',120);
+  cntEl.classList.add('bump'); setTimeout(()=>cntEl.classList.remove('bump'),200);
 }
 
-// ── Overlay sizing ──────────────────────────────────
-function syncOverlay() {
-  const wrap = document.getElementById('canvasWrap');
-  const vw = video.videoWidth, vh = video.videoHeight;
-  if (!vw) return;
-  const wr = wrap.clientWidth / wrap.clientHeight;
-  const vr = vw / vh;
-  let dw, dh, dx, dy;
-  if (vr > wr) { dw = wrap.clientWidth; dh = dw/vr; dx = 0; dy = (wrap.clientHeight-dh)/2; }
-  else { dh = wrap.clientHeight; dw = dh*vr; dy = 0; dx = (wrap.clientWidth-dw)/2; }
-  overlay.width = dw; overlay.height = dh;
-  overlay.style.left = dx+'px'; overlay.style.top = dy+'px';
-  overlay.style.width = dw+'px'; overlay.style.height = dh+'px';
-  overlayCtx = overlay.getContext('2d');
+// ══════════════════════════════════════════
+//  オーバーレイ描画（v2スタイルを踏襲）
+// ══════════════════════════════════════════
+const ROW_COLORS=[
+  'rgba(255,100,200,.85)','rgba(100,220,255,.85)',
+  'rgba(255,220,60,.85)', 'rgba(100,255,150,.85)',
+  'rgba(255,120,80,.85)', 'rgba(180,100,255,.85)',
+];
+function drawOverlay(dw,dh,PW,PH,candidates,merged,rows,WY,band){
+  octx.clearRect(0,0,dw,dh);
+  const sx=dw/PW, sy=dh/PH;
 
-  // Watch line label
-  const wlY = dh * state.watchPos / 100;
-  const lbl = document.getElementById('wlLabel');
-  lbl.style.top = (dy + wlY - 16) + 'px';
+  // WATCH LINE帯域
+  const cy=dh/2, bp=band*sy;
+  octx.fillStyle='rgba(0,230,118,.06)';
+  octx.fillRect(0,cy-bp,dw-64,bp*2);
+  octx.strokeStyle='rgba(0,230,118,.25)';
+  octx.lineWidth=1; octx.setLineDash([4,4]);
+  octx.beginPath();
+  octx.moveTo(0,cy-bp); octx.lineTo(dw-64,cy-bp);
+  octx.moveTo(0,cy+bp); octx.lineTo(dw-64,cy+bp);
+  octx.stroke(); octx.setLineDash([]);
+
+  if(!S.showVis) return;
+
+  // 候補点（黄色、小さめ）
+  octx.fillStyle='rgba(255,220,0,.45)';
+  for(const p of candidates){
+    octx.beginPath();
+    octx.arc(p.x*sx,p.y*sy,1.5,0,Math.PI*2);
+    octx.fill();
+  }
+
+  // 段ごとに結線＋統合点
+  for(let ri=0;ri<rows.length;ri++){
+    const row=rows[ri];
+    const inBand=Math.abs(row.yMean-WY)<=band;
+    const col=inBand?'rgba(255,171,0,.9)':ROW_COLORS[ri%ROW_COLORS.length];
+
+    // 結線
+    if(row.pts.length>=2){
+      octx.strokeStyle=col; octx.lineWidth=1.4; octx.setLineDash([]);
+      octx.beginPath();
+      octx.moveTo(row.pts[0].x*sx,row.pts[0].y*sy);
+      for(let k=1;k<row.pts.length;k++)
+        octx.lineTo(row.pts[k].x*sx,row.pts[k].y*sy);
+      octx.stroke();
+    }
+    // 統合点（ピンク / WATCH LINE内はオレンジ）
+    for(const p of row.pts){
+      octx.fillStyle  = inBand?'#ff8c00':'#ff69b4';
+      octx.strokeStyle='rgba(255,255,255,.6)';
+      octx.lineWidth=1;
+      octx.beginPath();
+      octx.arc(p.x*sx,p.y*sy,inBand?5:3.5,0,Math.PI*2);
+      octx.fill(); octx.stroke();
+    }
+  }
 }
 
-// ── Draw debug ──────────────────────────────────────
-function drawDebug(candidates, merged, rows, watchY, scale, pw, ph) {
-  const ctx = overlayCtx;
-  const cw = overlay.width, ch = overlay.height;
-  const sx = cw / pw, sy = ch / ph;
-  ctx.clearRect(0, 0, cw, ch);
-
-  if (state.mirror) { ctx.save(); ctx.scale(-1,1); ctx.translate(-cw,0); }
-
-  // Watch line
-  const wY = watchY * sy;
-  ctx.strokeStyle = 'rgba(0,229,160,0.8)';
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash([8,4]);
-  ctx.beginPath(); ctx.moveTo(0, wY); ctx.lineTo(cw, wY); ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.fillStyle = 'rgba(0,229,160,0.9)';
-  ctx.font = '10px JetBrains Mono';
-  ctx.fillText('WATCH', 4, wY - 3);
-
-  // Watch band
-  ctx.fillStyle = 'rgba(0,229,160,0.05)';
-  const band = state.watchBand * sy;
-  ctx.fillRect(0, wY-band, cw, band*2);
-
-  // Candidate points (yellow)
-  ctx.fillStyle = 'rgba(255,220,0,0.5)';
-  for (const p of candidates) {
-    ctx.beginPath();
-    ctx.arc(p.x*sx, p.y*sy, 2, 0, Math.PI*2);
-    ctx.fill();
+// ══════════════════════════════════════════
+//  右端グラフ（v2と同じ）
+// ══════════════════════════════════════════
+function drawGraph(dh, wlRows){
+  const pw=64;
+  gctx.clearRect(0,0,pw,dh);
+  gctx.fillStyle='rgba(0,0,0,.65)';
+  gctx.fillRect(0,0,pw,dh);
+  const rowH=dh/GHIST;
+  let maxV=Math.max(P.trigRows*2,1);
+  for(let i=0;i<GHIST;i++) if(gHist[i]>maxV) maxV=gHist[i];
+  for(let i=0;i<GHIST;i++){
+    const idx=(gIdx-GHIST+i+GHIST)%GHIST;
+    const v=gHist[idx];
+    const y=i*rowH, w=v/maxV*(pw-6);
+    gctx.fillStyle=v>=P.trigRows?'#ffab00':'rgba(0,230,118,.6)';
+    gctx.fillRect(2,y,w,Math.max(1,rowH-.5));
   }
-
-  // Merged points (pink) + row connections
-  for (const row of rows) {
-    const isNearWatch = Math.abs(row.yMean * sy - wY) < band * 2;
-    const lineColor = isNearWatch ? 'rgba(255,140,0,0.8)' : 'rgba(255,105,180,0.65)';
-    const dotColor  = isNearWatch ? '#ff8c00' : '#ff69b4';
-
-    // Row connection line
-    if (row.pts.length > 1) {
-      ctx.strokeStyle = lineColor;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(row.pts[0].x*sx, row.pts[0].y*sy);
-      for (let k=1; k<row.pts.length; k++) {
-        ctx.lineTo(row.pts[k].x*sx, row.pts[k].y*sy);
-      }
-      ctx.stroke();
-    }
-
-    // Dots
-    ctx.fillStyle = dotColor;
-    for (const p of row.pts) {
-      ctx.beginPath();
-      ctx.arc(p.x*sx, p.y*sy, 3.5, 0, Math.PI*2);
-      ctx.fill();
-    }
-  }
-
-  // Row count labels
-  for (const row of rows) {
-    const isNearWatch = Math.abs(row.yMean * sy - wY) < band * 2;
-    if (row.pts.length > 0) {
-      const lx = row.pts[0].x * sx;
-      const ly = row.yMean * sy;
-      ctx.fillStyle = isNearWatch ? '#ff8c00' : 'rgba(255,105,180,0.8)';
-      ctx.font = '9px JetBrains Mono';
-      ctx.fillText(`${row.pts.length}pt`, lx - 20, ly - 3);
-    }
-  }
-
-  // Row count badge
-  ctx.fillStyle = 'rgba(0,0,0,0.6)';
-  ctx.fillRect(cw-80, 4, 76, 20);
-  ctx.fillStyle = '#ff69b4';
-  ctx.font = 'bold 11px JetBrains Mono';
-  ctx.fillText(`ROWS: ${rows.length}`, cw-76, 18);
-
-  if (state.mirror) ctx.restore();
+  const tx=P.trigRows/maxV*(pw-6)+2;
+  gctx.strokeStyle='rgba(255,171,0,.7)';
+  gctx.lineWidth=1; gctx.setLineDash([3,3]);
+  gctx.beginPath(); gctx.moveTo(tx,0); gctx.lineTo(tx,dh); gctx.stroke();
+  gctx.setLineDash([]);
+  gctx.fillStyle='rgba(85,139,94,.9)';
+  gctx.font='9px Courier New';
+  gctx.fillText('WL',2,11); gctx.fillText('ROWS',2,21);
 }
 
-// ── Draw minimal (no debug) ──────────────────────────
-function drawMinimal(rows, watchY, scale, pw, ph) {
-  const ctx = overlayCtx;
-  const cw = overlay.width, ch = overlay.height;
-  const sx = cw/pw, sy = ch/ph;
-  ctx.clearRect(0,0,cw,ch);
-  if (state.mirror) { ctx.save(); ctx.scale(-1,1); ctx.translate(-cw,0); }
-
-  // Watch line only
-  const wY = watchY * sy;
-  ctx.strokeStyle = 'rgba(0,229,160,0.6)';
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash([6,3]);
-  ctx.beginPath(); ctx.moveTo(0,wY); ctx.lineTo(cw,wY); ctx.stroke();
-  ctx.setLineDash([]);
-
-  // Just dots near watch line
-  const band = state.watchBand * sy * 3;
-  for (const row of rows) {
-    if (Math.abs(row.yMean*sy - wY) < band) {
-      ctx.fillStyle = '#ff8c00';
-      for (const p of row.pts) {
-        ctx.beginPath(); ctx.arc(p.x*sx, p.y*sy, 3, 0, Math.PI*2); ctx.fill();
-      }
-    }
-  }
-  if (state.mirror) ctx.restore();
-}
-
-// ── Init ────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', () => {
-  video   = document.getElementById('video');
-  overlay = document.getElementById('overlay');
-  overlayCtx = overlay.getContext('2d');
-  navigator.mediaDevices.getUserMedia({ video: true }).then(() => populateCams()).catch(() => {});
-  addLog('net_counter3 初期化完了');
-  addLog('アルゴリズム: Wire Intersection Method');
+// ══════════════════════════════════════════
+//  UIイベント
+// ══════════════════════════════════════════
+document.getElementById('btn-rst').addEventListener('click',()=>{
+  S.count=0; cntEl.textContent='0';
+  S.phase='WAIT'; S.lastCountTime=0;
+  wlBar.classList.remove('hit'); lockInd.classList.remove('show');
+  mIntv.textContent='--';
+  if(S.running) sdot.className='sdot on';
+});
+document.getElementById('btn-m1').addEventListener('click',()=>{
+  if(S.count>0){S.count--;cntEl.textContent=S.count;}
+});
+document.getElementById('btn-vis').addEventListener('click',function(){
+  S.showVis=!S.showVis; this.classList.toggle('on',S.showVis);
+});
+document.getElementById('btn-adj').addEventListener('click',()=>{
+  document.getElementById('ppanel').classList.toggle('open');
 });
 
-window.addEventListener('resize', syncOverlay);
+function bindSlider(id,vid,key){
+  const el=document.getElementById(id),vl=document.getElementById(vid);
+  el.addEventListener('input',()=>{ P[key]=+el.value; vl.textContent=el.value; });
+}
+bindSlider('p-hmin','v-hmin','hMin');
+bindSlider('p-hmax','v-hmax','hMax');
+bindSlider('p-smin','v-smin','sMin');
+bindSlider('p-hthr','v-hthr','houghThr');
+bindSlider('p-atol','v-atol','angleTol');
+bindSlider('p-mdst','v-mdst','mergeDist');
+bindSlider('p-mscr','v-mscr','minScore');
+bindSlider('p-rtol','v-rtol','rowTol');
+bindSlider('p-rmin','v-rmin','rowMin');
+bindSlider('p-trig','v-trig','trigRows');
+bindSlider('p-unlk','v-unlk','unlockRows');
 </script>
 </body>
 </html>
