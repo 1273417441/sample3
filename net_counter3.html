@@ -64,7 +64,7 @@
             // 4. 直線のグルーピング（1本化ロジック）
             let lineGroup = [];
             const ANGLE_THRESHOLD = 6;   // 同じ線とみなす傾きの許容差（度）
-            const INTERCEPT_THRESHOLD = 35; // 【修正】画像の中央の高さ（y = rows/2）を通るx座標の許容ズレ（ピクセル）
+            const INTERCEPT_THRESHOLD = 60; // 【修正】画像の中央の高さ（y = rows/2）を通るx座標の許容ズレ（ピクセル）
 
             let midY = Math.round(src.rows / 2); // 判定の基準にする画像中央のY座標
 
@@ -128,8 +128,6 @@
             });
 
             // 結果を表示
-            console.log("raw lines:", lines.rows);
-            console.log("groups:", lineGroup.length);
             cv.imshow('canvasOutput', dst);
 
             // メモリ解放
