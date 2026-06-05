@@ -2,11 +2,11 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>網の直線検出テスト（完成版）</title>
+    <title>網の直線検出（本格クラスタリング版）</title>
     <script async src="https://docs.opencv.org/4.x/opencv.js" type="text/javascript"></script>
 </head>
 <body>
-    <h2>網の直線検出プロトタイプ（完成版）</h2>
+    <h2>網の直線検出プロトタイプ（弛み対策クラスタリング実装）</h2>
     <input type="file" id="fileInput" accept="image/*"><br><br>
     
     <div>
@@ -51,25 +51,20 @@
             let lowGreen = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [35, 35, 35, 0]);
             let highGreen = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [90, 255, 255, 255]);
             cv.inRange(hsv, lowGreen, highGreen, mask);
-            cv.bitwise_not(mask, mask); // 網を白に
+            cv.bitwise_not(mask, mask);
 
-            // 2. クロージング＆オープニング（ねじれ模様を潰して「滑らかな一本の棒」にする）
-            let kernel3 = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
-            let kernel5 = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
-            cv.morphologyEx(mask, mask, cv.MORPH_CLOSE, kernel5); // 少し強めに穴埋め
-            cv.morphologyEx(mask, mask, cv.MORPH_OPEN, kernel3);  // 飛び出たノイズを除去
+            // 2. 弛んだ網をできるだけ太く繋ぐモルフォロジー
+            let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
+            cv.morphologyEx(mask, mask, cv.MORPH_CLOSE, kernel);
 
-            // 3. パラメータを調整したハフ変換
+            // 3. ハフ変換（細切れになってもいいので、弛んだカーブを網羅的に拾う設定）
             let lines = new cv.Mat();
-            // 閾値: 40, 最小線長: 60, 最大隙間: 100
-            cv.HoughLinesP(mask, lines, 1, Math.PI / 180, 40, 60, 100);
+            cv.HoughLinesP(mask, lines, 1, Math.PI / 180, 30, 40, 50);
 
-            // 4. 直線のグルーピング
-            let lineGroup = [];
-            const ANGLE_THRESHOLD = 8;     // 許容する角度差
-            const INTERCEPT_THRESHOLD = 50; // 実績値（60）をベースに微調整
-
-            let midY = Math.round(src.rows / 2);
+            // 4. トラッキング＆クラスタリング（軌跡ベースの1本化）
+            let clusters = [];
+            // 同じコードとみなす「横方向の最大のズレ」（ピクセル）※網のたるみ具合に応じて40〜60で調整
+            const TRACK_DIST_THRESHOLD = 50; 
 
             for (let i = 0; i < lines.rows; ++i) {
                 let x1 = lines.data32S[i * 4];
@@ -81,49 +76,85 @@
                 if (angle > 90) angle -= 180;
                 if (angle < -90) angle += 180;
 
-                // 網のメイン角度（約65度〜80度）以外の細かなねじれノイズをカット
-                if (Math.abs(angle) < 55 || Math.abs(angle) > 85) continue;
+                // 縦・横のノイズを完全にカット
+                if (Math.abs(angle) < 50 || Math.abs(angle) > 85) continue;
 
                 let a = (x2 - x1) !== 0 ? (y2 - y1) / (x2 - x1) : 9999;
                 let b = y1 - a * x1;
-                let centerX = (midY - b) / a;
 
-                let matched = false;
-                for (let group of lineGroup) {
-                    // 【改善】「本来のコードの傾き（青/オレンジ）」が混ざらないよう、角度の符号（正負）が一致していることも条件に追加
-                    let isSameSign = (group.angle >= 0 && angle >= 0) || (group.angle < 0 && angle < 0);
+                // 線上の3点（上部、中央、下部）のX座標の「軌跡」をシミュレーションする
+                let y_top = Math.round(src.rows * 0.1);
+                let y_mid = Math.round(src.rows * 0.5);
+                let y_bot = Math.round(src.rows * 0.9);
+                
+                let x_top = (y_top - b) / a;
+                let x_mid = (y_mid - b) / a;
+                let x_bot = (y_bot - b) / a;
 
-                    if (isSameSign && Math.abs(group.angle - angle) < ANGLE_THRESHOLD && Math.abs(group.centerX - centerX) < INTERCEPT_THRESHOLD) {
-                        group.lines.push({x1, y1, x2, y2, a, b});
-                        matched = true;
-                        break;
+                // 既存のどのクラスター（コードの軌跡）に一番近いか探索
+                let bestCluster = null;
+                let minDelta = Infinity;
+
+                for (let cluster of clusters) {
+                    // 傾きの方向（青かオレンジか）が違うものは絶対混ぜない
+                    let isSameDirection = (cluster.isPositive && a > 0) || (!cluster.isPositive && a < 0);
+                    if (!isSameDirection) continue;
+
+                    // 上・中・下の3点でのX座標のズレの平均を計算
+                    let delta = (Math.abs(cluster.x_top - x_top) + Math.abs(cluster.x_mid - x_mid) + Math.abs(cluster.x_bot - x_bot)) / 3;
+                    
+                    if (delta < TRACK_DIST_THRESHOLD && delta < minDelta) {
+                        minDelta = delta;
+                        bestCluster = cluster;
                     }
                 }
 
-                if (!matched) {
-                    lineGroup.push({ angle, centerX, lines: [{x1, y1, x2, y2, a, b}] });
+                if (bestCluster) {
+                    // クラスターに点群を追加し、軌跡の基準値を更新
+                    bestCluster.points.push({x: x1, y: y1}, {x: x2, y: y2});
+                    bestCluster.x_top = (bestCluster.x_top + x_top) / 2;
+                    bestCluster.x_mid = (bestCluster.x_mid + x_mid) / 2;
+                    bestCluster.x_bot = (bestCluster.x_bot + x_bot) / 2;
+                } else {
+                    // 新規コードとしてクラスターを作成
+                    clusters.push({
+                        isPositive: a > 0,
+                        x_top, x_mid, x_bot,
+                        points: [{x: x1, y: y1}, {x: x2, y: y2}]
+                    });
                 }
             }
 
-            // 5. 統合された線を描画
-            lineGroup.forEach(group => {
-                let sumA = 0, sumB = 0;
-                group.lines.forEach(l => {
-                    sumA += l.a;
-                    sumB += l.b;
+            // 5. 各クラスターの点群から最小二乗法で究極の1本線を割り出して描画
+            clusters.forEach(cluster => {
+                // 点の数が少なすぎるノイズは破棄
+                if (cluster.points.length < 4) return;
+
+                // 最小二乗法による直線フィッティング（y = ax + b の a と b を求める）
+                let n = cluster.points.length;
+                let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+                
+                cluster.points.forEach(p => {
+                    sumX += p.x;
+                    sumY += p.y;
+                    sumXY += p.x * p.y;
+                    sumXX += p.x * p.x;
                 });
-                let avgA = sumA / group.lines.length;
-                let avgB = sumB / group.lines.length;
 
+                // 傾き(fitA)と切片(fitB)の計算
+                let fitA = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+                let fitB = (sumY - fitA * sumX) / n;
+
+                // 画像の上端から下端までのX座標を計算
                 let startY = 0;
-                let startX = Math.round((startY - avgB) / avgA);
+                let startX = Math.round((startY - fitB) / fitA);
                 let endY = dst.rows;
-                let endX = Math.round((endY - avgB) / avgA);
+                let endX = Math.round((endY - fitB) / fitA);
 
-                // 角度による色分け（今回の画像に合わせて最適化）
-                // 実際に描画される直線の傾き（avgA）をベースに判定
-                let color = (avgA > 0) ? new cv.Scalar(255, 165, 0, 255) : new cv.Scalar(0, 100, 255, 255);
+                // 色分け判定（fitAの傾きベース）
+                let color = (fitA > 0) ? new cv.Scalar(255, 165, 0, 255) : new cv.Scalar(0, 100, 255, 255);
 
+                // 完全に1本化された直線を描画
                 cv.line(dst, new cv.Point(startX, startY), new cv.Point(endX, endY), color, 3);
             });
 
@@ -131,7 +162,7 @@
 
             // メモリ解放
             src.delete(); hsv.delete(); mask.delete(); dst.delete();
-            lines.delete(); kernel3.delete(); kernel5.delete(); lowGreen.delete(); highGreen.delete();
+            lines.delete(); kernel.delete(); lowGreen.delete(); highGreen.delete();
         }
     </script>
 </body>
