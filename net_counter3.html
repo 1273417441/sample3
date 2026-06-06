@@ -1278,10 +1278,9 @@ function scoreGridPoints(
         finalPoints.push({
             x: item.orig.x + globalDx,
             y: item.orig.y + globalDy,
-            score: item.snapped.score, 
-            // 💡 ここを item.orig.x ではなく、個別に動いた先の item.snapped.x にしてみる
-            origX: item.snapped.x,        
-            origY: item.snapped.y
+            score: item.snapped.score, // 吸着先のスコアを引き継ぐ
+            origX: item.orig.x,        // デバッグ赤線用の元座標
+            origY: item.orig.y
         });
     }
 
