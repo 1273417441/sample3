@@ -671,7 +671,7 @@ function detectAngles(skeletonMat){
                 drawY = center.y;
             } else {
                 // 【NO：外側エリア】外挿点なので、MLSが作った美しいしなり座標のまま「何もしない」！
-                // (drawX, drawY は上で計算した理想格子のままになります)
+                // (drawX, drawY は上で計算した理想格子のまま維持されます)
             }
 
             // 🟡 確定した最終座標を、目標PNGと同じ鮮やかな黄色で描画
