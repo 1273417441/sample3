@@ -419,7 +419,11 @@ function createMorphImage(binaryMat){
         new cv.Point(-1,-1),
         iterations
     );
-
+    
+    console.log(
+    morphMat.type()
+    );
+    
     cv.imshow(
         "morphCanvas",
         morph
