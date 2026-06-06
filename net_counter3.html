@@ -643,6 +643,8 @@ function detectAngles(skeletonMat){
 
         const scoredPoints = scoreGridPoints(crossPoints, skeletonMat);
 
+        const snappedPoints = snapGridPoints(scoredPoints, skeletonMat);
+
         // ========================================================
         // 🎯 Part8-2: 描画（ここに追加します！）
         // ========================================================
@@ -652,7 +654,7 @@ function detectAngles(skeletonMat){
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(src, 0, 0);
 
-        for (const p of scoredPoints) {
+        for (const p of snappedPoints) {
             if (p.score < 5) continue;
 
             // まずは色（スコアが5以上の良い点）で確認するための描画
@@ -660,6 +662,12 @@ function detectAngles(skeletonMat){
             ctx.beginPath();
             ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
             ctx.fill();
+
+            ctx.strokeStyle = "red";
+            ctx.beginPath();
+            ctx.moveTo(orig.x, orig.y);
+            ctx.lineTo(p.x, p.y);
+            ctx.stroke();
         }
         
         /* ❌ 古い一括描画は無効化します
@@ -1185,6 +1193,81 @@ function scoreGridPoints(
     }
 
     return out;
+}
+
+    function snapPointToSkeleton(
+    p,
+    skeletonMat,
+    searchRadius = 6
+){
+
+    let bestX = p.x;
+    let bestY = p.y;
+    let bestScore = -1;
+
+    for(let dy=-searchRadius; dy<=searchRadius; dy++){
+
+        for(let dx=-searchRadius; dx<=searchRadius; dx++){
+
+            const x = Math.round(p.x + dx);
+            const y = Math.round(p.y + dy);
+
+            if(
+                x < 0 ||
+                y < 0 ||
+                x >= skeletonMat.cols ||
+                y >= skeletonMat.rows
+            ){
+                continue;
+            }
+
+            const score =
+                skeletonDensity(
+                    skeletonMat,
+                    x,
+                    y,
+                    5
+                );
+
+            if(score > bestScore){
+
+                bestScore = score;
+                bestX = x;
+                bestY = y;
+            }
+        }
+    }
+
+    return {
+        x: bestX,
+        y: bestY,
+        score: bestScore
+    };
+}
+
+    function snapGridPoints(
+    scoredPoints,
+    skeletonMat
+){
+
+    const snapped = [];
+
+    for(const p of scoredPoints){
+
+        if(p.score < 5)
+            continue;
+
+        const s =
+            snapPointToSkeleton(
+                p,
+                skeletonMat,
+                6
+            );
+
+        snapped.push(s);
+    }
+
+    return snapped;
 }
     
 </script>
