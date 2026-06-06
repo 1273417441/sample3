@@ -249,11 +249,11 @@ function processImage(){
 
     drawSource();
 
-    createBinaryImage();
+    const binaryMat = createBinaryImage();
 
-    createMorphImage();
+    const morphMat = createMorphImage(binaryMat);
 
-    createSkeletonImage();
+    createSkeletonImage(morphMat);
 
 }
 
@@ -279,19 +279,167 @@ function drawSource(){
 
 function createBinaryImage(){
 
-    // Part2で実装
+    const srcCanvas =
+        document.getElementById("srcCanvas");
 
+    let src =
+        cv.imread(srcCanvas);
+
+    let hsv =
+        new cv.Mat();
+
+    cv.cvtColor(
+        src,
+        hsv,
+        cv.COLOR_RGBA2RGB
+    );
+
+    cv.cvtColor(
+        hsv,
+        hsv,
+        cv.COLOR_RGB2HSV
+    );
+
+    const hMin =
+        parseInt(document.getElementById("hMin").value);
+
+    const hMax =
+        parseInt(document.getElementById("hMax").value);
+
+    const sMin =
+        parseInt(document.getElementById("sMin").value);
+
+    const vMin =
+        parseInt(document.getElementById("vMin").value);
+
+    let lower =
+        new cv.Mat(
+            hsv.rows,
+            hsv.cols,
+            hsv.type(),
+            [
+                hMin/2,
+                sMin*2.55,
+                vMin*2.55,
+                0
+            ]
+        );
+
+    let upper =
+        new cv.Mat(
+            hsv.rows,
+            hsv.cols,
+            hsv.type(),
+            [
+                hMax/2,
+                255,
+                255,
+                255
+            ]
+        );
+
+    let bgMask =
+        new cv.Mat();
+
+    cv.inRange(
+        hsv,
+        lower,
+        upper,
+        bgMask
+    );
+
+    let wireMask =
+        new cv.Mat();
+
+    cv.bitwise_not(
+        bgMask,
+        wireMask
+    );
+
+    cv.imshow(
+        "binaryCanvas",
+        wireMask
+    );
+
+    src.delete();
+    hsv.delete();
+    lower.delete();
+    upper.delete();
+    bgMask.delete();
+
+    return wireMask;
 }
 
-function createMorphImage(){
+function createMorphImage(binaryMat){
 
-    // Part2で実装
+    const kernelSize =
+        parseInt(
+            document.getElementById("kernelSize").value
+        );
 
+    const iterations =
+        parseInt(
+            document.getElementById("iterations").value
+        );
+
+    let morph =
+        binaryMat.clone();
+
+    let kernel =
+        cv.getStructuringElement(
+            cv.MORPH_RECT,
+            new cv.Size(
+                kernelSize,
+                kernelSize
+            )
+        );
+
+    //
+    // OPEN
+    //
+
+    cv.morphologyEx(
+        morph,
+        morph,
+        cv.MORPH_OPEN,
+        kernel,
+        new cv.Point(-1,-1),
+        iterations
+    );
+
+    //
+    // CLOSE
+    //
+
+    cv.morphologyEx(
+        morph,
+        morph,
+        cv.MORPH_CLOSE,
+        kernel,
+        new cv.Point(-1,-1),
+        iterations
+    );
+
+    cv.imshow(
+        "morphCanvas",
+        morph
+    );
+
+    kernel.delete();
+
+    binaryMat.delete();
+
+    return morph;
 }
 
-function createSkeletonImage(){
+function createSkeletonImage(morphMat){
 
-    // Part3で実装
+    cv.imshow(
+        "skeletonCanvas",
+        morphMat
+    );
+
+    morphMat.delete();
 
 }
 
