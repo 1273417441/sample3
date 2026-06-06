@@ -658,15 +658,10 @@ function detectAngles(skeletonMat){
         ctx.drawImage(src, 0, 0);
 
         // ========================================================
-        // 🎯 Part11-4: 【本命】千鳥配置（1個飛ばし）を適用して最終描画！
+        // 🎯 Part11ステップ1: junctionScoreを使って一本道を除去！
         // ========================================================
         for (const p of crossPoints) {
             
-            // 🌟 【ChatGPTの指示】インデックス(i + j)が奇数の場所は描画をスキップ（間引き）
-            if (((p.i + p.j) & 1) !== 0) {
-                continue;
-            }
-
             // 1. まずはMLSで滑らかな理想しなり座標を計算
             const warp = gridWarpMLS(p.i, p.j, survived);
             let drawX = p.x + warp.dx;
@@ -680,25 +675,32 @@ function detectAngles(skeletonMat){
                 const currentPt = { x: drawX, y: drawY };
                 const snapped = snapPointToSkeleton(currentPt, skeletonMat, 15);
 
-                // さらに、お団子（結び目）のど真ん中へ強力吸着！
-                const center = knotCenter(
-                    snapped.x,
-                    snapped.y,
-                    skeletonMat
-                );
-                drawX = center.x;
-                drawY = center.y;
+                // 🌟 【いまやる修正】吸着した場所が、本当に4方向以上に分岐した「結び目」か厳格チェック！
+                // (ChatGPTの指示通り、閾値を「5以上」に設定して、一本道を徹底的にハネます)
+                if (junctionScore(snapped.x, snapped.y, skeletonMat) >= 5) {
+                    // 5以上なら真の結び目！お団子のど真ん中へ強力吸着
+                    const center = knotCenter(
+                        snapped.x,
+                        snapped.y,
+                        skeletonMat
+                    );
+                    drawX = center.x;
+                    drawY = center.y;
+                } else {
+                    // 4以下（一本道の途中など）なら、誤吸着させずにMLSの理想座標のまま流す
+                }
+                
             } else {
                 // 【NO：外側エリア】外挿点なので、MLSの美しいしなり座標のまま維持
             }
 
-            // 🟡 確定した最終座標を、目標PNGと同じ鮮やかなゴールド（#FFD400）で描画
+            // 🟡 確定した座標を、鮮やかなゴールド（#FFD400）で描画
             ctx.fillStyle = "#FFD400";
             ctx.beginPath();
             ctx.arc(
                 drawX,
                 drawY,
-                5, // ドットの大きさ（ChatGPTの指示で少しだけ大きめの5に変更）
+                4, // ドットの大きさ
                 0,
                 Math.PI * 2
             );
