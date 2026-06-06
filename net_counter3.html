@@ -654,29 +654,25 @@ function detectAngles(skeletonMat){
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(src, 0, 0);
 
-        const recoveredPoints = reconstructMissingPoints(gridPoints, snappedPoints);
+        const recoveredPoints = reconstructMissingPoints(crossPoints, snappedPoints);
 
         // ⬇️ 【これまでのループを削除し、この新しいループに差し替えます】
-        for (const p of recoveredPoints) {
-            
-            // ChatGPTの指示通り、生存点と補完点で色を切り替える
-            if (p.isRecovered) {
-                ctx.fillStyle = "orange"; // 🟠 補完された点
-            } else {
-                ctx.fillStyle = "yellow"; // 🟡 元から生存していた点
-            }
-
-            // スコア足切りで消えていた場所も含め、すべての格子点（補完点）を描画
+        // 🟡 ① まずは元から生き残っている「生存点」を黄色で描画
+        for (const p of snappedPoints) {
+            ctx.fillStyle = "yellow";
             ctx.beginPath();
-            ctx.arc(
-                p.x,
-                p.y,
-                3,
-                0,
-                Math.PI * 2
-            );
+            ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
             ctx.fill();
         }
+
+        // 🟠 ② 次に、背番号から逆算して大復活した「補完点」をオレンジ色で描画
+        for (const p of recoveredPoints) {
+            ctx.fillStyle = "orange";
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
     } // ➔ if文の終わり
     
     skeletonMat.delete();
