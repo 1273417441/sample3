@@ -259,7 +259,10 @@ function processImage(){
 
     const morphMat = createMorphImage(binaryMat);
 
+    const skeletonMat =
     createSkeletonImage(morphMat);
+
+    detectAngles(skeletonMat);
 
 }
 
@@ -453,7 +456,7 @@ function createSkeletonImage(morphMat){
     );
 
     morphMat.delete();
-    skeletonMat.delete();
+    return skeletonMat;
 }
 
 function zhangSuenThinning(src){
@@ -574,6 +577,115 @@ function thinningIteration(
     }
 
     return changed;
+}
+
+function detectAngles(skeletonMat){
+
+    const hist =
+        buildAngleHistogram(skeletonMat);
+
+    const peaks =
+        findAnglePeaks(hist);
+
+    if(peaks.length>=2){
+
+        document.getElementById("thetaA").textContent =
+            peaks[0];
+
+        document.getElementById("thetaB").textContent =
+            peaks[1];
+    }
+
+    skeletonMat.delete();
+}
+
+function buildAngleHistogram(mat){
+
+    const hist =
+        new Array(180).fill(0);
+
+    const w = mat.cols;
+    const h = mat.rows;
+
+    const d = mat.data;
+
+    for(let y=1;y<h-1;y++){
+
+        for(let x=1;x<w-1;x++){
+
+            const idx=y*w+x;
+
+            if(d[idx]===0)
+                continue;
+
+            let gx=0;
+            let gy=0;
+
+            for(let yy=-1;yy<=1;yy++){
+
+                for(let xx=-1;xx<=1;xx++){
+
+                    if(xx===0 && yy===0)
+                        continue;
+
+                    const v =
+                      d[(y+yy)*w+(x+xx)]>0 ? 1 : 0;
+
+                    gx += xx*v;
+                    gy += yy*v;
+                }
+            }
+
+            if(gx===0 && gy===0)
+                continue;
+
+            let ang =
+                Math.atan2(gy,gx) *
+                180/Math.PI;
+
+            ang =
+                Math.round((ang+180)%180);
+
+            hist[ang]++;
+        }
+    }
+
+    return hist;
+}
+
+function findAnglePeaks(hist){
+
+    const peaks=[];
+
+    const tmp =
+      hist.map((v,i)=>({a:i,v}));
+
+    tmp.sort(
+      (a,b)=>b.v-a.v
+    );
+
+    for(const p of tmp){
+
+        let ok=true;
+
+        for(const q of peaks){
+
+            if(
+              Math.abs(p.a-q)<15
+            ){
+                ok=false;
+                break;
+            }
+        }
+
+        if(ok)
+            peaks.push(p.a);
+
+        if(peaks.length===2)
+            break;
+    }
+
+    return peaks;
 }
 
 </script>
