@@ -1502,9 +1502,8 @@ function reconstructMissingPoints(
 }
 
 function gridWarpMLS(i, j, survivedPoints) {
-    // 💡 1箇所目の変更：alphaを 2.0 ➔ 1.0 に落とします。
-    // これにより、遠くにある生存点の「歪みトレンド」の電波が外側まで届くようになります。
-    const alpha = 1.0; 
+    // 💡 遠くの点の「しなりトレンド」を一切減衰させずに外側まで届ける設定
+    const alpha = 0.0; // ➔ 0にすることで、距離による影響力のシャットアウトを無くします
 
     let sumW = 0;
     let sumDx = 0;
@@ -1515,9 +1514,8 @@ function gridWarpMLS(i, j, survivedPoints) {
         const dj = p.j - j;
         const dist2 = di * di + dj * dj;
 
-        // 💡 2箇所目の変更：分母の微小値を +1e-6 ➔ +9.0 程度に大きくします。
-        // これにより、外挿エリアに行っても重みが急激にゼロにならず、全体のたるみ感をマイルドに引き継ぎます。
-        const w = 1.0 / Math.pow(dist2 + 9.0, alpha / 2.0);
+        // 💡 近くの点は少し強めに、でも遠くの点のトレンドも絶対に捨てないマイルドな重み
+        const w = 1.0 / (Math.sqrt(dist2) + 1.0);
 
         sumW += w;
         sumDx += p.dx * w;
