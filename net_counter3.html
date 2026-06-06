@@ -32,7 +32,6 @@ h2{
     flex-direction:column;
 }
 
-/* 📍 縦横比を完全に維持し、全キャンバスの表示サイズを400px幅に統一 */
 canvas{
     border:1px solid #444;
     max-width:100%;
@@ -178,7 +177,7 @@ const srcCanvas = document.getElementById("srcCanvas");
 const binaryCanvas = document.getElementById("binaryCanvas");
 const morphCanvas = document.getElementById("morphCanvas");
 const skeletonCanvas = document.getElementById("skeletonCanvas");
-const gridCanvas = document.getElementById("gridCanvas"); // 📍 追加
+const gridCanvas = document.getElementById("gridCanvas");
 
 const statusEl = document.getElementById("status");
 
@@ -232,7 +231,6 @@ document.getElementById("fileInput").addEventListener("change",e=>{
 
 });
 
-// 📍 【最重要修正】gridCanvasの内部サイズも元画像と完全に一致させる
 function setupCanvasSize(img){
 
     const list = [
@@ -240,7 +238,7 @@ function setupCanvasSize(img){
         binaryCanvas,
         morphCanvas,
         skeletonCanvas,
-        gridCanvas // 👈 ここに gridCanvas を追加し忘れていたのが原因でした！
+        gridCanvas
     ];
 
     list.forEach(c=>{
@@ -595,13 +593,11 @@ function thinningIteration(
     return changed;
 }
 
-// 📍 司令塔関数
 function detectAngles(skeletonMat){
 
     const hist = buildAngleHistogram(skeletonMat);
     const candidates = findAngleCandidates(hist);
 
-    // 💡 これで best[0].peaks と best[1].peaks にデータが保持されます
     const best = evaluateAngles(skeletonMat, candidates);
 
     document.getElementById("thetaA").textContent = best[0].theta;
@@ -609,20 +605,16 @@ function detectAngles(skeletonMat){
     document.getElementById("pitchA").textContent = best[0].pitch;
     document.getElementById("pitchB").textContent = best[1].pitch;
 
-    // 💡 ChatGPTが言っている「const peaksA = [...]」の状態を作ります
     if (best[0].theta !== "--" && best[0].pitch !== "--" && best[1].theta !== "--") {
-        const peaksA = best[0].peaks; // ★ Part5のピーク検出結果を保持！
-        const peaksB = best[1].peaks; // ★ Part5のピーク検出結果を保持！
+        const peaksA = best[0].peaks;
+        const peaksB = best[1].peaks;
 
-        // 📍 【修正箇所1】画像の幅(w)と高さ(h)をしっかり定義してあげる
         const w = skeletonMat.cols;
         const h = skeletonMat.rows;
 
-        // 📍 【修正箇所2】pitchA / pitchB ではなく、正しい変数名 best[0].pitch / best[1].pitch から渡す
         const rhoStartA = estimateRhoStart(peaksA, best[0].pitch);
         const rhoStartB = estimateRhoStart(peaksB, best[1].pitch);
 
-        // 現在はまだ機械的に引いている段階（Part6のまま維持）
         const idealA = buildIdealLines(
             best[0].theta,
             best[0].pitch,
@@ -643,56 +635,51 @@ function detectAngles(skeletonMat){
 
         const scoredPoints = scoreGridPoints(crossPoints, skeletonMat);
 
-        // ⭕️ 修正後のコード
         const { survived, rejected, survivedMap } = snapGridPoints(scoredPoints, skeletonMat);
 
-        // ========================================================
-        // 🎯 Part9: 3色デバッグ描画（黄・オレンジ・赤）
-        // ========================================================
         const canvas = document.getElementById("gridCanvas");
         const ctx = canvas.getContext("2d");
         const src = document.getElementById("srcCanvas");
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(src, 0, 0);
 
-        // 欠損補完点の計算
-        const recoveredPoints = reconstructMissingPoints(crossPoints, survived);
-
         // ========================================================
         // 🎯 Part10: 交点（黄色）のみを残し、結び目中心へ最終吸着！
         // ========================================================
-        
         for (const p of crossPoints) {
-            // 1. まずはMLSで滑らかな「理想のしなり座標」を計算
+            // 1. MLSで滑らかな理想しなり座標を計算
             const warp = gridWarpMLS(p.i, p.j, survived);
             const idealX = p.x + warp.dx;
             const idealY = p.y + warp.dy;
 
-            // 🌟 【ここが足りていませんでした】
-            // 直接、理想のX座標（idealX）とY座標（idealY）をバラバラの数字のまま関数に渡しました
-            const snapped = snapPointToSkeleton(idealX, idealY, skeletonMat, 15);
+            // 2. 正しいオブジェクト形式の引数を作って、スケルトン線へ吸着
+            const currentPt = { x: idealX, y: idealY };
+            const snapped = snapPointToSkeleton(currentPt, skeletonMat, 15);
 
-            // 3. 線から「結び目のど真ん中（重心）」へさらに吸着
+            // 3. 線から「結び目のど真ん中（重心）」へさらにギュッと吸着
             const center = knotCenter(
                 snapped.x,
                 snapped.y,
                 skeletonMat
             );
 
-            // 🟡 最終決定した結び目中心（center）の座標を、目標PNGと同じ鮮やかな黄色で描画
+            // 🟡 目標PNGと同じ鮮やかな黄色でドットを描画
             ctx.fillStyle = "#F5C400";
             ctx.beginPath();
             ctx.arc(
                 center.x,
                 center.y,
-                4, // ドットの大きさ
+                4, 
                 0,
                 Math.PI * 2
             );
             ctx.fill();
         }
 
-    } // ➔ if (bestGrid.score > 0) の終わり
+    }
+    
+    skeletonMat.delete();
+}
 
 function buildAngleHistogram(mat){
 
@@ -819,7 +806,6 @@ function evaluateAngles(skeletonMat, candidates) {
 
             if (score > maxScore) {
                 maxScore = score;
-                // 💡 ChatGPTの指示通り、検出された「生のpeaks（ピーク配列）」をしっかり保持してセットする
                 bestPair = [
                     { theta: theta1, pitch: pitch1, peaks: peaks1 }, 
                     { theta: theta2, pitch: pitch2, peaks: peaks2 }
@@ -1037,14 +1023,12 @@ function buildCrossPoints(linesA, linesB){
 
     const pts = [];
 
-    // ⭕️ linesA のループにカウンター「i」を導入
     for (let i = 0; i < linesA.length; i++) {
         const a = linesA[i];
         
         const ca = Math.cos(a.theta);
         const sa = Math.sin(a.theta);
 
-        // ⭕️ linesB のループにカウンター「j」を導入
         for (let j = 0; j < linesB.length; j++) {
             const b = linesB[j];
             
@@ -1058,7 +1042,6 @@ function buildCrossPoints(linesA, linesB){
             const x = (a.rho*sb - b.rho*sa) / det;
             const y = (b.rho*ca - a.rho*cb) / det;
 
-            // ⭕️ 座標と一緒に、格子インデックス（i, j）をセットして保存します！
             pts.push({
                 x: x,
                 y: y,
@@ -1068,33 +1051,6 @@ function buildCrossPoints(linesA, linesB){
         }
     }
     return pts;
-}
-
-// 📍 【背景描画】元画像全体を背景として綺麗にコピーする
-function drawGridPoints(canvas, pts){
-
-    const ctx = canvas.getContext("2d");
-
-    const src = document.getElementById("srcCanvas");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(src, 0, 0);
-
-    ctx.fillStyle = "yellow";
-
-    for(const p of pts){
-        if(
-            p.x < 0 ||
-            p.y < 0 ||
-            p.x >= canvas.width ||
-            p.y >= canvas.height
-        ){
-            continue;
-        }
-
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 3, 0, Math.PI*2);
-        ctx.fill();
-    }
 }
 
 function estimateRhoStart(peaks, pitch){
@@ -1210,7 +1166,6 @@ function scoreGridPoints(
                 8
             );
 
-        // ⭕️ 修正：元の p に入っていたインデックス (i と j) を、ここで消さずにしっかり次へ引き継ぎます！
         out.push({
             x:p.x,
             y:p.y,
@@ -1269,8 +1224,8 @@ function snapPointToSkeleton(
     return {
         x: bestX,
         y: bestY,
-        dx: bestX - p.x, // 💡 追加：元の位置からX方向にどれだけ動いたか
-        dy: bestY - p.y, // 💡 追加：元の位置からY方向にどれだけ動いたか
+        dx: bestX - p.x,
+        dy: bestY - p.y,
         score: bestScore
     };
 }
@@ -1281,12 +1236,9 @@ function snapGridPoints(scoredPoints, skeletonMat) {
     const survivedMap = {};
 
     for (const p of scoredPoints) {
-        // 1️⃣ 先に全員、周囲6pxの吸着探索を実行する！
         const s = snapPointToSkeleton(p, skeletonMat, 6);
         
-        // 2️⃣ 吸着した「後」のスコアで合格・不合格をジャッジ（基準は10）
         if (s.score < 10) {
-            // 🔴 不合格：元の理想点座標とインデックスを赤点用に保存
             rejected.push({
                 x: p.x,
                 y: p.y,
@@ -1294,7 +1246,6 @@ function snapGridPoints(scoredPoints, skeletonMat) {
                 j: p.j
             });
         } else {
-            // 🟡 合格：吸着後の座標(s.x, s.y)とインデックスを保存
             const pt = {
                 i: p.i,
                 j: p.j,
@@ -1305,7 +1256,7 @@ function snapGridPoints(scoredPoints, skeletonMat) {
             };
 
             survived.push(pt);
-            survivedMap[`${p.i}_${p.j}`] = pt; // キーは ${i}_${j} の形に変更
+            survivedMap[`${p.i}_${p.j}`] = pt;
         }
     }
 
@@ -1316,196 +1267,8 @@ function snapGridPoints(scoredPoints, skeletonMat) {
     };
 }
 
-function estimateGlobalWarp(snappedPoints){
-
-    const dxs = [];
-    const dys = [];
-
-    for(const p of snappedPoints){
-
-        dxs.push(p.dx);
-        dys.push(p.dy);
-    }
-
-    dxs.sort((a,b)=>a-b);
-    dys.sort((a,b)=>a-b);
-
-    const mdx =
-        dxs[Math.floor(dxs.length/2)];
-
-    const mdy =
-        dys[Math.floor(dys.length/2)];
-
-    return {
-        dx: mdx,
-        dy: mdy
-    };
-}
-
-function localWarp(
-    x,
-    y,
-    snappedPoints,
-    radius = 80
-){
-
-    let sx=0;
-    let sy=0;
-    let sw=0;
-
-    for(const p of snappedPoints){
-
-        const ddx =
-            p.x - x;
-
-        const ddy =
-            p.y - y;
-
-        const d2 =
-            ddx*ddx + ddy*ddy;
-
-        if(d2 > radius*radius)
-            continue;
-
-        const w =
-            1/(d2+1);
-
-        sx += p.dx*w;
-        sy += p.dy*w;
-        sw += w;
-    }
-
-    if(sw===0)
-        return {dx:0,dy:0};
-
-    return {
-        dx:sx/sw,
-        dy:sy/sw
-    };
-}
-
-function buildGridMap(points){
-
-    const map = new Map();
-
-    for(const p of points){
-
-        const key =
-            p.i + "," + p.j;
-
-        map.set(key,p);
-    }
-
-    return map;
-}
-
-function findMissingGridPoints(
-    allGridPoints,
-    survivedMap
-){
-
-    const missing = [];
-
-    for(const p of allGridPoints){
-
-        const key =
-            p.i + "," + p.j;
-
-        if(!survivedMap.has(key)){
-
-            missing.push(p);
-        }
-    }
-
-    return missing;
-}
-
-function estimateMissingPoint(
-    p,
-    survivedMap
-){
-
-    const L =
-        survivedMap.get(
-            (p.i-1)+","+p.j
-        );
-
-    const R =
-        survivedMap.get(
-            (p.i+1)+","+p.j
-        );
-
-    if(L && R){
-
-        return {
-            x:(L.x+R.x)/2,
-            y:(L.y+R.y)/2,
-            i:p.i,
-            j:p.j,
-            virtual:true
-        };
-    }
-
-    const U =
-        survivedMap.get(
-            p.i+","+(p.j-1)
-        );
-
-    const D =
-        survivedMap.get(
-            p.i+","+(p.j+1)
-        );
-
-    if(U && D){
-
-        return {
-            x:(U.x+D.x)/2,
-            y:(U.y+D.y)/2,
-            i:p.i,
-            j:p.j,
-            virtual:true
-        };
-    }
-
-    return null;
-}
-
-function reconstructMissingPoints(
-    allGridPoints,
-    survivedPoints
-){
-
-    const map =
-        buildGridMap(
-            survivedPoints
-        );
-
-    const missing =
-        findMissingGridPoints(
-            allGridPoints,
-            map
-        );
-
-    const recovered = [];
-
-    for(const p of missing){
-
-        const r =
-            estimateMissingPoint(
-                p,
-                map
-            );
-
-        if(r)
-            recovered.push(r);
-    }
-
-    return recovered;
-}
-
 function gridWarpMLS(i, j, survivedPoints) {
-    // 💡 遠くの点の「しなりトレンド」を一切減衰させずに外側まで届ける設定
-    const alpha = 0.0; // ➔ 0にすることで、距離による影響力のシャットアウトを無くします
+    const alpha = 0.0;
 
     let sumW = 0;
     let sumDx = 0;
@@ -1516,7 +1279,6 @@ function gridWarpMLS(i, j, survivedPoints) {
         const dj = p.j - j;
         const dist2 = di * di + dj * dj;
 
-        // 💡 近くの点は少し強めに、でも遠くの点のトレンドも絶対に捨てないマイルドな重み
         const w = 1.0 / (Math.sqrt(dist2) + 1.0);
 
         sumW += w;
@@ -1532,85 +1294,6 @@ function gridWarpMLS(i, j, survivedPoints) {
         dx: sumDx / sumW,
         dy: sumDy / sumW
     };
-}
-
-function affineWarp(i, j, survivedMap){
-
-    const neigh = [];
-
-    for(const key in survivedMap){
-
-        const p = survivedMap[key];
-
-        const di = p.i - i;
-        const dj = p.j - j;
-
-        const dist2 = di*di + dj*dj;
-
-        neigh.push({
-            dist2,
-            dx:p.dx,
-            dy:p.dy
-        });
-    }
-
-    neigh.sort((a,b)=>a.dist2-b.dist2);
-
-    const K = Math.min(8, neigh.length);
-
-    let sumW = 0;
-    let sumDx = 0;
-    let sumDy = 0;
-
-    for(let k=0;k<K;k++){
-
-        const n = neigh[k];
-
-        const w = 1 / (Math.sqrt(n.dist2)+1);
-
-        sumW += w;
-        sumDx += n.dx * w;
-        sumDy += n.dy * w;
-    }
-
-    if(sumW===0){
-        return {dx:0,dy:0};
-    }
-
-    return {
-        dx:sumDx/sumW,
-        dy:sumDy/sumW
-    };
-}
-
-function generateCellCenters(gridMap){
-
-    const centers = [];
-
-    const keys = Object.keys(gridMap);
-
-    for(const key of keys){
-
-        const [i,j] = key.split('_').map(Number);
-
-        const p00 = gridMap[`${i}_${j}`];
-        const p10 = gridMap[`${i+1}_${j}`];
-        const p01 = gridMap[`${i}_${j+1}`];
-        const p11 = gridMap[`${i+1}_${j+1}`];
-
-        if(!p00 || !p10 || !p01 || !p11){
-            continue;
-        }
-
-        centers.push({
-
-            x:(p00.x+p10.x+p01.x+p11.x)/4,
-
-            y:(p00.y+p10.y+p01.y+p11.y)/4
-        });
-    }
-
-    return centers;
 }
 
 function knotCenter(x,y,skeletonMat)
