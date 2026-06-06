@@ -668,10 +668,12 @@ function detectAngles(skeletonMat){
             const idealX = p.x + warp.dx;
             const idealY = p.y + warp.dy;
 
-            // 2. 【ChatGPTの指示】理想の座標を、まずはスケルトンの線に吸着
-            const snapped = snapPointToSkeleton(idealX, idealY, skeletonMat, 15);
+            // 🌟 【ここが足りていませんでした】
+            // snapPointToSkeleton に「理想の座標」をひとつの塊（オブジェクト）として渡してあげます
+            const currentPoint = { x: idealX, y: idealY };
+            const snapped = snapPointToSkeleton(currentPoint, skeletonMat, 15);
 
-            // 3. 【ChatGPTの指示】ここに追加！線から「結び目のど真ん中（重心）」へさらに吸着
+            // 3. 線から「結び目のど真ん中（重心）」へさらに吸着
             const center = knotCenter(
                 snapped.x,
                 snapped.y,
@@ -692,9 +694,6 @@ function detectAngles(skeletonMat){
         }
 
     } // ➔ if (bestGrid.score > 0) の終わり
-    
-    skeletonMat.delete();
-} // ➔ detectAngles 関数の終わり
 
 function buildAngleHistogram(mat){
 
