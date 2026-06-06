@@ -598,36 +598,40 @@ function thinningIteration(
 // 📍 司令塔関数
 function detectAngles(skeletonMat){
 
-    const hist =
-        buildAngleHistogram(skeletonMat);
+    const hist = buildAngleHistogram(skeletonMat);
+    const candidates = findAngleCandidates(hist);
 
-    const candidates =
-        findAngleCandidates(hist);
-
-    const best =
-        evaluateAngles(
-            skeletonMat,
-            candidates
-        );
+    // 💡 これで best[0].peaks と best[1].peaks にデータが保持されます
+    const best = evaluateAngles(skeletonMat, candidates);
 
     document.getElementById("thetaA").textContent = best[0].theta;
     document.getElementById("thetaB").textContent = best[1].theta;
     document.getElementById("pitchA").textContent = best[0].pitch;
     document.getElementById("pitchB").textContent = best[1].pitch;
 
+    // 💡 ChatGPTが言っている「const peaksA = [...]」の状態を作ります
     if (best[0].theta !== "--" && best[0].pitch !== "--" && best[1].theta !== "--") {
+        const peaksA = best[0].peaks; // ★ Part5のピーク検出結果を保持！
+        const peaksB = best[1].peaks; // ★ Part5のピーク検出結果を保持！
+
+        const rhoStartA = estimateRhoStart(peaksA, pitchA);
+        const rhoStartB = estimateRhoStart(peaksB, pitchB);
+
+        // 現在はまだ機械的に引いている段階（Part6のまま維持）
         const idealA = buildIdealLines(
             best[0].theta,
             best[0].pitch,
-            skeletonMat.cols,
-            skeletonMat.rows
+            rhoStartA,
+            w,
+            h
         );
 
         const idealB = buildIdealLines(
             best[1].theta,
             best[1].pitch,
-            skeletonMat.cols,
-            skeletonMat.rows
+            rhoStartB,
+            w,
+            h
         );
 
         const crossPoints = buildCrossPoints(idealA, idealB);
@@ -766,9 +770,10 @@ function evaluateAngles(skeletonMat, candidates) {
 
             if (score > maxScore) {
                 maxScore = score;
+                // 💡 ChatGPTの指示通り、検出された「生のpeaks（ピーク配列）」をしっかり保持してセットする
                 bestPair = [
-                    { theta: theta1, pitch: pitch1 },
-                    { theta: theta2, pitch: pitch2 }
+                    { theta: theta1, pitch: pitch1, peaks: peaks1 }, 
+                    { theta: theta2, pitch: pitch2, peaks: peaks2 }
                 ];
             }
         }
@@ -776,8 +781,8 @@ function evaluateAngles(skeletonMat, candidates) {
 
     if (!bestPair) {
         return [
-            { theta: "--", pitch: "--" },
-            { theta: "--", pitch: "--" }
+            { theta: "--", pitch: "--", peaks: [] },
+            { theta: "--", pitch: "--", peaks: [] }
         ];
     }
 
@@ -939,21 +944,43 @@ function estimatePitch(rhoList){
     return diffs[Math.floor(diffs.length/2)];
 }
     
-function buildIdealLines(thetaDeg, pitch, width, height){
+function buildIdealLines(
+    thetaDeg,
+    pitch,
+    rhoStart,
+    width,
+    height
+){
 
-    const theta = thetaDeg * Math.PI / 180;
-    const cosT = Math.cos(theta);
-    const sinT = Math.sin(theta);
+    const theta =
+        thetaDeg*Math.PI/180;
 
-    const diag = Math.sqrt(width*width + height*height);
-    const lines = [];
+    const diag =
+        Math.sqrt(
+            width*width+
+            height*height
+        );
 
-    for(let rho=-diag; rho<=diag; rho+=pitch){
+    const lines=[];
+
+    let rho=rhoStart;
+
+    while(rho> -diag)
+        rho-=pitch;
+
+    for(
+        ;
+        rho<=diag;
+        rho+=pitch
+    ){
+
         lines.push({
-            theta: theta,
-            rho: rho
+            theta,
+            rho
         });
+
     }
+
     return lines;
 }
 
@@ -1007,6 +1034,43 @@ function drawGridPoints(canvas, pts){
         ctx.arc(p.x, p.y, 3, 0, Math.PI*2);
         ctx.fill();
     }
+}
+
+function estimateRhoStart(peaks, pitch){
+
+    if(!peaks || peaks.length===0)
+        return 0;
+
+    const phaseHist = new Map();
+
+    for(const rho of peaks){
+
+        let phase = rho % pitch;
+
+        if(phase < 0)
+            phase += pitch;
+
+        const key = Math.round(phase);
+
+        phaseHist.set(
+            key,
+            (phaseHist.get(key)||0)+1
+        );
+    }
+
+    let bestPhase = 0;
+    let bestCount = 0;
+
+    for(const [phase,count] of phaseHist){
+
+        if(count > bestCount){
+
+            bestCount = count;
+            bestPhase = phase;
+        }
+    }
+
+    return bestPhase;
 }
     
 </script>
