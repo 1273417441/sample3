@@ -665,10 +665,10 @@ function detectAngles(skeletonMat){
         for (const p of crossPoints) {
 
             // 💡 高速検索用マップ「survivedMap」を渡して、インデックスから歪み量を計算
-            const warp = gridWarp(
+            const warp = gridWarpMLS(
                 p.i,
                 p.j,
-                survivedMap
+                survived
             );
 
             // 理想の座標に、計算されたズレ量（dx, dy）を足して最終描画座標を決定！
@@ -1501,19 +1501,42 @@ function reconstructMissingPoints(
     return recovered;
 }
 
-function gridWarp(i,j,survivedMap){
+function gridWarpMLS(i, j, survived){
 
-    const key = `${i}_${j}`;
+    let sumW = 0;
 
-    if(survivedMap[key]){
+    let dx = 0;
+    let dy = 0;
+
+    const alpha = 2.0;
+
+    for(const p of survived){
+
+        const di = p.i - i;
+        const dj = p.j - j;
+
+        const d2 = di*di + dj*dj;
+
+        const w = 1 / Math.pow(d2 + 1, alpha);
+
+        sumW += w;
+
+        dx += p.dx * w;
+        dy += p.dy * w;
+    }
+
+    if(sumW < 1e-6){
 
         return {
-            dx:survivedMap[key].dx,
-            dy:survivedMap[key].dy
+            dx:0,
+            dy:0
         };
     }
 
-    return affineWarp(i,j,survivedMap);
+    return {
+        dx:dx/sumW,
+        dy:dy/sumW
+    };
 }
 
 function affineWarp(i, j, survivedMap){
