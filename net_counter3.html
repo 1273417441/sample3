@@ -652,8 +652,7 @@ function detectAngles(skeletonMat){
             let drawX = p.x + warp.dx;
             let drawY = p.y + warp.dy;
 
-            // 🌟 【ChatGPTの超・賢い作戦】
-            // この格子点が、本物の網の上にある合格点（survivedMapに存在する点）かどうかを調べます！
+            // 2. この格子点が、本物の網の上にある合格点（survivedMapに存在する点）かどうかを調べます
             const isSurvived = survivedMap[`${p.i}_${p.j}`];
 
             if (isSurvived) {
@@ -671,7 +670,7 @@ function detectAngles(skeletonMat){
                 drawY = center.y;
             } else {
                 // 【NO：外側エリア】外挿点なので、MLSが作った美しいしなり座標のまま「何もしない」！
-                // (drawX, drawY は上で計算した理想格子のまま維持されます)
+                // （上で計算した drawX, drawY の綺麗な等間隔のまま描画されます）
             }
 
             // 🟡 確定した最終座標を、目標PNGと同じ鮮やかな黄色で描画
