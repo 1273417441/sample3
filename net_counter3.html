@@ -644,39 +644,50 @@ function detectAngles(skeletonMat){
         ctx.drawImage(src, 0, 0);
 
         // ========================================================
-        // 🎯 Part10: 交点（黄色）のみを残し、結び目中心へ最終吸着！
+        // 🎯 Part10確定版: survived（合格マーク）を使って完璧に条件分岐！
         // ========================================================
         for (const p of crossPoints) {
-            // 1. MLSで滑らかな理想しなり座標を計算
+            // 1. まずはMLSで滑らかな理想しなり座標を計算
             const warp = gridWarpMLS(p.i, p.j, survived);
-            const idealX = p.x + warp.dx;
-            const idealY = p.y + warp.dy;
+            let drawX = p.x + warp.dx;
+            let drawY = p.y + warp.dy;
 
-            // 2. 正しいオブジェクト形式の引数を作って、スケルトン線へ吸着
-            const currentPt = { x: idealX, y: idealY };
-            const snapped = snapPointToSkeleton(currentPt, skeletonMat, 15);
+            // 🌟 【ChatGPTの超・賢い作戦】
+            // この格子点が、本物の網の上にある合格点（survivedMapに存在する点）かどうかを調べます！
+            const isSurvived = survivedMap[`${p.i}_${p.j}`];
 
-            // 3. 線から「結び目のど真ん中（重心）」へさらにギュッと吸着
-            const center = knotCenter(
-                snapped.x,
-                snapped.y,
-                skeletonMat
-            );
+            if (isSurvived) {
+                // 【YES：中央部】実網があるので、まずはスケルトン線へ吸着
+                const currentPt = { x: drawX, y: drawY };
+                const snapped = snapPointToSkeleton(currentPt, skeletonMat, 15);
 
-            // 🟡 目標PNGと同じ鮮やかな黄色でドットを描画
+                // さらに、お団子（結び目）のど真ん中へ強力吸着！
+                const center = knotCenter(
+                    snapped.x,
+                    snapped.y,
+                    skeletonMat
+                );
+                drawX = center.x;
+                drawY = center.y;
+            } else {
+                // 【NO：外側エリア】外挿点なので、MLSが作った美しいしなり座標のまま「何もしない」！
+                // (drawX, drawY は上で計算した理想格子のままになります)
+            }
+
+            // 🟡 確定した最終座標を、目標PNGと同じ鮮やかな黄色で描画
             ctx.fillStyle = "#F5C400";
             ctx.beginPath();
             ctx.arc(
-                center.x,
-                center.y,
-                4, 
+                drawX,
+                drawY,
+                4, // ドットの大きさ
                 0,
                 Math.PI * 2
             );
             ctx.fill();
         }
 
-    }
+    } // ➔ if (bestGrid.score > 0) の終わり
     
     skeletonMat.delete();
 }
@@ -1334,6 +1345,29 @@ function knotCenter(x,y,skeletonMat)
         x:sumX/count,
         y:sumY/count
     };
+}
+
+function localSkeletonDensity(mat, x, y, radius=8)
+{
+    let count = 0;
+
+    for(let dy=-radius; dy<=radius; dy++)
+    {
+        for(let dx=-radius; dx<=radius; dx++)
+        {
+            let xx = Math.round(x + dx);
+            let yy = Math.round(y + dy);
+
+            if(xx<0 || yy<0 ||
+               xx>=mat.cols || yy>=mat.rows)
+                continue;
+
+            if(mat.ucharPtr(yy,xx)[0] > 0)
+                count++;
+        }
+    }
+
+    return count;
 }
     
 </script>
