@@ -896,22 +896,6 @@ function findAngleCandidates(hist){
     return peaks;
 }
 
-function evaluateAngles(angleResult){
-
-    const pitch = estimatePitch(angleResult.rhos);
-
-    // ★ミクロ周期は失格
-    if(pitch < 20){
-        return 0;
-    }
-
-    if(pitch > 80){
-        return 0;
-    }
-
-    return angleResult.peaks.length;
-}
-
 function buildRhoHistogram(
     mat,
     thetaDeg
