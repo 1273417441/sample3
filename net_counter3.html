@@ -1208,9 +1208,12 @@ function scoreGridPoints(
                 8
             );
 
+        // ⭕️ 修正：元の p に入っていたインデックス (i と j) を、ここで消さずにしっかり次へ引き継ぎます！
         out.push({
             x:p.x,
             y:p.y,
+            i:p.i,
+            j:p.j,
             score
         });
     }
@@ -1218,7 +1221,7 @@ function scoreGridPoints(
     return out;
 }
 
-    function snapPointToSkeleton(
+function snapPointToSkeleton(
     p,
     skeletonMat,
     searchRadius = 6
