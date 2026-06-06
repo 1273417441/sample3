@@ -602,18 +602,20 @@ function detectAngles(skeletonMat){
     const hist =
         buildAngleHistogram(skeletonMat);
 
-    const peaks =
-        findAnglePeaks(hist);
+    const candidates =
+        findAngleCandidates(hist);
 
-    if(peaks.length>=2){
+    const best =
+        evaluateAngles(
+            skeletonMat,
+            candidates
+        );
 
-        document.getElementById("thetaA").textContent =
-            peaks[0];
-
-        document.getElementById("thetaB").textContent =
-            peaks[1];
-    }
-
+    document.getElementById("thetaA").textContent =best[0].theta;
+    document.getElementById("thetaB").textContent =best[1].theta;
+    document.getElementById("pitchA").textContent =best[0].pitch;
+    document.getElementById("pitchB").textContent =best[1].pitch;
+    
     skeletonMat.delete();
 }
 
@@ -757,6 +759,185 @@ function findAnglePeaks(hist){
     }
 
     return peaks;
+}
+
+function findAngleCandidates(hist){
+
+    const peaks=[];
+
+    const tmp=
+        hist.map(
+            (v,i)=>({a:i,v})
+        );
+
+    tmp.sort(
+        (a,b)=>b.v-a.v
+    );
+
+    for(const p of tmp){
+
+        let ok=true;
+
+        for(const q of peaks){
+
+            let d=
+                Math.abs(
+                    p.a-q
+                );
+
+            d=
+                Math.min(
+                    d,
+                    180-d
+                );
+
+            if(d<20){
+
+                ok=false;
+                break;
+            }
+        }
+
+        if(ok){
+
+            peaks.push(p.a);
+        }
+
+        if(peaks.length===8)
+            break;
+    }
+
+    return peaks;
+}
+
+function evaluateAngles(
+    mat,
+    angles
+){
+
+    const results=[];
+
+    for(const theta of angles){
+
+        const rhoHist =
+            buildRhoHistogram(
+                mat,
+                theta
+            );
+
+        const pitch =
+            estimatePitch(
+                rhoHist
+            );
+
+        results.push({
+            theta,
+            pitch:
+                pitch.pitch,
+            score:
+                pitch.score
+        });
+    }
+
+    results.sort(
+        (a,b)=>
+            b.score-a.score
+    );
+
+    return results.slice(0,2);
+}
+
+function buildRhoHistogram(
+    mat,
+    thetaDeg
+){
+
+    const w=mat.cols;
+    const h=mat.rows;
+
+    const d=mat.data;
+
+    const theta=
+        thetaDeg*
+        Math.PI/180;
+
+    const ct=
+        Math.cos(theta);
+
+    const st=
+        Math.sin(theta);
+
+    const rhoMax=
+        Math.ceil(
+            Math.sqrt(
+                w*w+h*h
+            )
+        );
+
+    const hist=
+        new Array(
+            rhoMax*2+1
+        ).fill(0);
+
+    for(let y=0;y<h;y++){
+
+        for(let x=0;x<w;x++){
+
+            if(
+                d[y*w+x]===0
+            ) continue;
+
+            const rho=
+                Math.round(
+                    x*ct+y*st
+                );
+
+            hist[
+                rho+rhoMax
+            ]++;
+        }
+    }
+
+    return hist;
+}
+
+function estimatePitch(
+    hist
+){
+
+    let bestPitch=0;
+    let bestScore=0;
+
+    for(
+        let pitch=5;
+        pitch<100;
+        pitch++
+    ){
+
+        let score=0;
+
+        for(
+            let i=0;
+            i<hist.length-pitch;
+            i++
+        ){
+
+            score +=
+                hist[i] *
+                hist[i+pitch];
+        }
+
+        if(score>bestScore){
+
+            bestScore=score;
+            bestPitch=pitch;
+        }
+    }
+
+    return {
+        pitch:bestPitch,
+        score:bestScore
+    };
 }
 
 </script>
