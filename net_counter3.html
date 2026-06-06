@@ -2,9 +2,14 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>STEP1 ワイヤ抽出</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<title>STEP2 Skeleton Preparation</title>
+
+<script async src="https://docs.opencv.org/4.x/opencv.js"></script>
 
 <style>
+
 body{
     background:#111;
     color:white;
@@ -12,60 +17,91 @@ body{
     margin:20px;
 }
 
+h2{
+    margin-bottom:10px;
+}
+
+.wrap{
+    display:flex;
+    flex-wrap:wrap;
+    gap:20px;
+}
+
+.panel{
+    display:flex;
+    flex-direction:column;
+}
+
 canvas{
     border:1px solid #444;
-    max-width:100%;
-}
-
-.row{
-    margin:8px 0;
-}
-
-label{
-    display:inline-block;
-    width:120px;
-}
-
-.value{
-    display:inline-block;
-    width:50px;
-    color:#0f0;
+    max-width:600px;
 }
 
 .controls{
     margin-top:20px;
     background:#222;
-    padding:10px;
+    padding:15px;
 }
 
-.wrap{
-    display:flex;
-    gap:20px;
-    flex-wrap:wrap;
+.row{
+    margin-bottom:10px;
 }
+
+label{
+    display:inline-block;
+    width:160px;
+}
+
+.value{
+    display:inline-block;
+    width:50px;
+    color:#00ff66;
+}
+
+.status{
+    margin-top:10px;
+    color:#ffcc00;
+}
+
 </style>
 </head>
 <body>
 
-<h2>STEP1 背景除去 → ワイヤ二値化</h2>
+<h2>STEP2 モルフォロジー + Skeleton準備</h2>
 
 <input type="file" id="fileInput">
 
-<div class="wrap">
-
-<div>
-    <h3>元画像</h3>
-    <canvas id="srcCanvas"></canvas>
+<div class="status" id="status">
+OpenCVロード待機中...
 </div>
 
-<div>
-    <h3>二値化結果</h3>
-    <canvas id="dstCanvas"></canvas>
+<div class="wrap">
+
+<div class="panel">
+<h3>元画像</h3>
+<canvas id="srcCanvas"></canvas>
+</div>
+
+<div class="panel">
+<h3>二値化</h3>
+<canvas id="binaryCanvas"></canvas>
+</div>
+
+<div class="panel">
+<h3>モルフォロジー後</h3>
+<canvas id="morphCanvas"></canvas>
+</div>
+
+<div class="panel">
+<h3>Skeleton</h3>
+<canvas id="skeletonCanvas"></canvas>
 </div>
 
 </div>
 
 <div class="controls">
+
+<h3>HSV</h3>
 
 <div class="row">
 <label>Hue Min</label>
@@ -91,149 +127,172 @@ label{
 <span class="value" id="vMinVal">15</span>
 </div>
 
+<hr>
+
+<h3>Morphology</h3>
+
+<div class="row">
+<label>Kernel Size</label>
+<input type="range" id="kernelSize" min="1" max="15" value="3">
+<span class="value" id="kernelSizeVal">3</span>
+</div>
+
+<div class="row">
+<label>Iterations</label>
+<input type="range" id="iterations" min="1" max="10" value="1">
+<span class="value" id="iterationsVal">1</span>
+</div>
+
 </div>
 
 <script>
 
-const srcCanvas=document.getElementById("srcCanvas");
-const dstCanvas=document.getElementById("dstCanvas");
+let currentImage = null;
+let cvReady = false;
 
-const srcCtx=srcCanvas.getContext("2d");
-const dstCtx=dstCanvas.getContext("2d");
+const srcCanvas = document.getElementById("srcCanvas");
+const binaryCanvas = document.getElementById("binaryCanvas");
+const morphCanvas = document.getElementById("morphCanvas");
+const skeletonCanvas = document.getElementById("skeletonCanvas");
 
-let currentImage=null;
+const statusEl = document.getElementById("status");
 
-const controls=[
+const sliders = [
 "hMin",
 "hMax",
 "sMin",
-"vMin"
+"vMin",
+"kernelSize",
+"iterations"
 ];
 
-controls.forEach(id=>{
-    const slider=document.getElementById(id);
-    const label=document.getElementById(id+"Val");
+sliders.forEach(id=>{
 
-    slider.addEventListener("input",()=>{
-        label.textContent=slider.value;
+    const s = document.getElementById(id);
+    const v = document.getElementById(id+"Val");
 
-        if(currentImage){
+    v.textContent = s.value;
+
+    s.addEventListener("input",()=>{
+
+        v.textContent = s.value;
+
+        if(currentImage && cvReady){
             processImage();
         }
+
     });
+
 });
 
 document.getElementById("fileInput").addEventListener("change",e=>{
 
-    const file=e.target.files[0];
+    const file = e.target.files[0];
+
     if(!file) return;
 
-    const img=new Image();
+    const img = new Image();
 
-    img.onload=()=>{
+    img.onload = ()=>{
 
-        currentImage=img;
+        currentImage = img;
 
-        srcCanvas.width=img.width;
-        srcCanvas.height=img.height;
-
-        dstCanvas.width=img.width;
-        dstCanvas.height=img.height;
-
-        srcCtx.drawImage(img,0,0);
+        setupCanvasSize(img);
 
         processImage();
+
     };
 
-    img.src=URL.createObjectURL(file);
+    img.src = URL.createObjectURL(file);
+
 });
+
+function setupCanvasSize(img){
+
+    const list = [
+        srcCanvas,
+        binaryCanvas,
+        morphCanvas,
+        skeletonCanvas
+    ];
+
+    list.forEach(c=>{
+
+        c.width = img.width;
+        c.height = img.height;
+
+    });
+
+}
+
+function waitForOpenCV(){
+
+    if(typeof cv === "undefined"){
+
+        setTimeout(waitForOpenCV,100);
+        return;
+
+    }
+
+    cvReady = true;
+
+    statusEl.textContent =
+        "OpenCVロード完了";
+
+}
+
+waitForOpenCV();
 
 function processImage(){
 
-    srcCtx.drawImage(currentImage,0,0);
+    if(!currentImage) return;
 
-    const imageData=srcCtx.getImageData(
-        0,
-        0,
-        srcCanvas.width,
-        srcCanvas.height
-    );
+    drawSource();
 
-    const data=imageData.data;
+    createBinaryImage();
 
-    const hMin=Number(document.getElementById("hMin").value);
-    const hMax=Number(document.getElementById("hMax").value);
-    const sMin=Number(document.getElementById("sMin").value);
-    const vMin=Number(document.getElementById("vMin").value);
+    createMorphImage();
 
-    const out=dstCtx.createImageData(
-        srcCanvas.width,
-        srcCanvas.height
-    );
+    createSkeletonImage();
 
-    const o=out.data;
-
-    for(let i=0;i<data.length;i+=4){
-
-        const r=data[i]/255;
-        const g=data[i+1]/255;
-        const b=data[i+2]/255;
-
-        const hsv=rgbToHsv(r,g,b);
-
-        const h=hsv.h;
-        const s=hsv.s*100;
-        const v=hsv.v*100;
-
-        const isBackground=
-            h>=hMin &&
-            h<=hMax &&
-            s>=sMin &&
-            v>=vMin;
-
-        const color=isBackground ? 0 : 255;
-
-        o[i]=color;
-        o[i+1]=color;
-        o[i+2]=color;
-        o[i+3]=255;
-    }
-
-    dstCtx.putImageData(out,0,0);
 }
 
-function rgbToHsv(r,g,b){
+function drawSource(){
 
-    const max=Math.max(r,g,b);
-    const min=Math.min(r,g,b);
+    const ctx =
+        srcCanvas.getContext("2d");
 
-    const d=max-min;
+    ctx.clearRect(
+        0,
+        0,
+        srcCanvas.width,
+        srcCanvas.height
+    );
 
-    let h=0;
+    ctx.drawImage(
+        currentImage,
+        0,
+        0
+    );
 
-    if(d!==0){
+}
 
-        if(max===r){
-            h=((g-b)/d)%6;
-        }
-        else if(max===g){
-            h=(b-r)/d+2;
-        }
-        else{
-            h=(r-g)/d+4;
-        }
+function createBinaryImage(){
 
-        h*=60;
+    // Part2で実装
 
-        if(h<0){
-            h+=360;
-        }
-    }
+}
 
-    const s=max===0 ? 0 : d/max;
-    const v=max;
+function createMorphImage(){
 
-    return {h,s,v};
+    // Part2で実装
+
+}
+
+function createSkeletonImage(){
+
+    // Part3で実装
+
 }
 
 </script>
