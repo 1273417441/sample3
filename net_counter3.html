@@ -97,6 +97,11 @@ OpenCVロード待機中...
 <canvas id="skeletonCanvas"></canvas>
 </div>
 
+<div class="panel">
+<h3>理想格子ドット生成結果 (Part6)</h3>
+<canvas id="gridCanvas"></canvas>
+</div>
+    
 </div>
 
 <div class="controls">
@@ -615,7 +620,29 @@ function detectAngles(skeletonMat){
     document.getElementById("thetaB").textContent =best[1].theta;
     document.getElementById("pitchA").textContent =best[0].pitch;
     document.getElementById("pitchB").textContent =best[1].pitch;
-    
+
+    if (best[0].theta !== "--" && best[0].pitch !== "--") {
+        const idealA =buildIdealLines(
+            thetaA,
+            pitchA,
+            skeleton.cols,
+            skeleton.rows
+        );
+
+        const idealB =buildIdealLines(
+            thetaB,
+            pitchB,
+            skeleton.cols,
+            skeleton.rows
+        );
+
+        const crossPoints =buildCrossPoints(idealA,idealB);
+
+        drawGridPoints(
+            document.getElementById("gridCanvas"),
+            crossPoints
+        );
+        
     skeletonMat.delete();
 }
 
@@ -979,7 +1006,105 @@ function estimatePitch(rhoList){
 
     return diffs[Math.floor(diffs.length/2)];
 }
+    
+function buildIdealLines(thetaDeg, pitch, width, height){
 
+    const theta = thetaDeg * Math.PI / 180;
+
+    const cosT = Math.cos(theta);
+    const sinT = Math.sin(theta);
+
+    const diag = Math.sqrt(width*width + height*height);
+
+    const lines = [];
+
+    for(let rho=-diag; rho<=diag; rho+=pitch){
+
+        lines.push({
+            theta: theta,
+            rho: rho
+        });
+
+    }
+
+    return lines;
+}
+
+function buildCrossPoints(linesA, linesB){
+
+    const pts = [];
+
+    for(const a of linesA){
+
+        const ca = Math.cos(a.theta);
+        const sa = Math.sin(a.theta);
+
+        for(const b of linesB){
+
+            const cb = Math.cos(b.theta);
+            const sb = Math.sin(b.theta);
+
+            const det =
+                ca*sb -
+                cb*sa;
+
+            if(Math.abs(det)<1e-6)
+                continue;
+
+            const x =
+                (a.rho*sb - b.rho*sa)
+                / det;
+
+            const y =
+                (b.rho*ca - a.rho*cb)
+                / det;
+
+            pts.push({x,y});
+        }
+    }
+
+    return pts;
+}
+
+function drawGridPoints(canvas, pts){
+
+    const ctx =
+        canvas.getContext("2d");
+
+    ctx.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+    ctx.fillStyle="yellow";
+
+    for(const p of pts){
+
+        if(
+            p.x<0 ||
+            p.y<0 ||
+            p.x>=canvas.width ||
+            p.y>=canvas.height
+        ){
+            continue;
+        }
+
+        ctx.beginPath();
+
+        ctx.arc(
+            p.x,
+            p.y,
+            3,
+            0,
+            Math.PI*2
+        );
+
+        ctx.fill();
+    }
+}
+    
 </script>
 
 </body>
