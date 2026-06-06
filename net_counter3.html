@@ -259,8 +259,16 @@ function processImage(){
 
     const morphMat = createMorphImage(binaryMat);
 
-    const skeletonMat =
-    createSkeletonImage(morphMat);
+    const skeletonMat = createSkeletonImage(morphMat);
+
+    // ★ここにChatGPTの外枠消去コードを挟み込みます！
+    cv.rectangle(
+        skeletonMat,
+        new cv.Point(0, 0),
+        new cv.Point(skeletonMat.cols, skeletonMat.rows),
+        new cv.Scalar(0),
+        15 // 外周15pxを真っ黒にして罠を解除！
+    );
 
     detectAngles(skeletonMat);
 
@@ -601,67 +609,112 @@ function detectAngles(skeletonMat){
 
 function buildAngleHistogram(mat){
 
-    const hist =
-        new Array(180).fill(0);
+    const hist = new Array(180).fill(0);
 
     const w = mat.cols;
     const h = mat.rows;
-
     const d = mat.data;
 
-    for(let y=1;y<h-1;y++){
+    const border = 10;
 
-        for(let x=1;x<w-1;x++){
+    const points = [];
 
-            const idx=y*w+x;
+    for(let y=border;y<h-border;y++){
 
-            if(d[idx]===0)
+        for(let x=border;x<w-border;x++){
+
+            if(d[y*w+x]>0){
+
+                points.push({x,y});
+            }
+        }
+    }
+
+    const maxDist = 12;
+
+    for(let i=0;i<points.length;i++){
+
+        const p1 = points[i];
+
+        for(let j=i+1;j<points.length;j++){
+
+            const p2 = points[j];
+
+            const dx = p2.x-p1.x;
+            const dy = p2.y-p1.y;
+
+            const dist2 =
+                dx*dx+dy*dy;
+
+            if(
+                dist2<4 ||
+                dist2>maxDist*maxDist
+            ){
                 continue;
-
-            let gx=0;
-            let gy=0;
-
-            for(let yy=-1;yy<=1;yy++){
-
-                for(let xx=-1;xx<=1;xx++){
-
-                    if(xx===0 && yy===0)
-                        continue;
-
-                    const v =
-                      d[(y+yy)*w+(x+xx)]>0 ? 1 : 0;
-
-                    gx += xx*v;
-                    gy += yy*v;
-                }
             }
 
-            if(gx===0 && gy===0)
-                continue;
-
             let ang =
-                Math.atan2(gy,gx) *
+                Math.atan2(dy,dx)*
                 180/Math.PI;
 
             ang =
-                Math.round((ang+180)%180);
+                Math.round(
+                    (ang+180)%180
+                );
 
             hist[ang]++;
         }
     }
 
-    return hist;
+    return smoothHistogram(
+        hist,
+        5
+    );
 }
 
+function smoothHistogram(
+    hist,
+    radius
+){
+
+    const out =
+        new Array(hist.length).fill(0);
+
+    for(let i=0;i<hist.length;i++){
+
+        let sum=0;
+        let cnt=0;
+
+        for(
+            let k=-radius;
+            k<=radius;
+            k++
+        ){
+
+            const idx =
+                (i+k+180)%180;
+
+            sum += hist[idx];
+            cnt++;
+        }
+
+        out[i]=sum/cnt;
+    }
+
+    return out;
+}
+    
 function findAnglePeaks(hist){
 
     const peaks=[];
 
-    const tmp =
-      hist.map((v,i)=>({a:i,v}));
+    const tmp=
+        hist.map(
+            (v,i)=>({a:i,v})
+        );
 
     tmp.sort(
-      (a,b)=>b.v-a.v
+        (a,b)=>b.v-a.v
     );
 
     for(const p of tmp){
@@ -670,19 +723,27 @@ function findAnglePeaks(hist){
 
         for(const q of peaks){
 
-            if(
-              Math.abs(p.a-q)<15
-            ){
+            let d=
+                Math.abs(p.a-q);
+
+            d=Math.min(d,180-d);
+
+            if(d<40){
+
                 ok=false;
                 break;
             }
         }
 
-        if(ok)
-            peaks.push(p.a);
+        if(ok){
 
-        if(peaks.length===2)
+            peaks.push(p.a);
+        }
+
+        if(peaks.length===2){
+
             break;
+        }
     }
 
     return peaks;
