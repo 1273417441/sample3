@@ -659,38 +659,50 @@ function detectAngles(skeletonMat){
         const recoveredPoints = reconstructMissingPoints(crossPoints, survived);
 
         // ========================================================
-        // 🎯 ④ 描画ループ置換（フィッティング版に一本化）
+        // 🎯 ④ 描画ループ（交点とセル中心の2色描画版にアップデート！）
         // ========================================================
-        // すべての初期格子点（あなたのコードでの変数名は crossPoints です）をループ
+        
+        // 💡 下準備：generateCellCentersに渡すための、MLS適用済みの完全な座標マップを作ります
+        const computedGridMap = {};
+
+        // 🟡 1. まずはすべての交点をループして黄色で描画
         for (const p of crossPoints) {
+            const warp = gridWarpMLS(p.i, p.j, survived);
 
-            // 💡 高速検索用マップ「survivedMap」を渡して、インデックスから歪み量を計算
-            const warp = gridWarpMLS(
-                p.i,
-                p.j,
-                survived
-            );
-
-            // 理想の座標に、計算されたズレ量（dx, dy）を足して最終描画座標を決定！
             const drawX = p.x + warp.dx;
             const drawY = p.y + warp.dy;
 
-            ctx.fillStyle = "yellow"; // とりあえず見やすいように黄色で統一して描きます
+            // 計算した確定座標を、あとでセル中心の計算に使えるようにマップに保存！
+            computedGridMap[`${p.i}_${p.j}`] = { x: drawX, y: drawY };
+
+            // 交点を黄色で描画
+            ctx.fillStyle = "yellow";
+            ctx.beginPath();
+            ctx.arc(drawX, drawY, 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // 🔵 2. 【ChatGPTの指定】作成したマップからセル中心の座標群を生成！
+        const centers = generateCellCenters(computedGridMap);
+
+        // 🔵 3. 【ChatGPTの指定】どこに入れるの？ ➔ ここに入れます！シアンでセル中心を描画
+        ctx.fillStyle = "cyan";
+        for (const c of centers) {
             ctx.beginPath();
             ctx.arc(
-                drawX,
-                drawY,
-                3,
+                c.x,
+                c.y,
+                2,
                 0,
                 Math.PI * 2
             );
             ctx.fill();
         }
 
-    } // ➔ if文の終わり
+    } // ➔ if (bestGrid.score > 0) の終わり
     
     skeletonMat.delete();
-}
+} // ➔ detectAngles 関数の終わり
 
 function buildAngleHistogram(mat){
 
@@ -1579,6 +1591,36 @@ function affineWarp(i, j, survivedMap){
         dx:sumDx/sumW,
         dy:sumDy/sumW
     };
+}
+
+function generateCellCenters(gridMap){
+
+    const centers = [];
+
+    const keys = Object.keys(gridMap);
+
+    for(const key of keys){
+
+        const [i,j] = key.split('_').map(Number);
+
+        const p00 = gridMap[`${i}_${j}`];
+        const p10 = gridMap[`${i+1}_${j}`];
+        const p01 = gridMap[`${i}_${j+1}`];
+        const p11 = gridMap[`${i+1}_${j+1}`];
+
+        if(!p00 || !p10 || !p01 || !p11){
+            continue;
+        }
+
+        centers.push({
+
+            x:(p00.x+p10.x+p01.x+p11.x)/4,
+
+            y:(p00.y+p10.y+p01.y+p11.y)/4
+        });
+    }
+
+    return centers;
 }
     
 </script>
