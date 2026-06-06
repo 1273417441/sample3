@@ -669,9 +669,8 @@ function detectAngles(skeletonMat){
             const idealY = p.y + warp.dy;
 
             // 🌟 【ここが足りていませんでした】
-            // snapPointToSkeleton に「理想の座標」をひとつの塊（オブジェクト）として渡してあげます
-            const currentPoint = { x: idealX, y: idealY };
-            const snapped = snapPointToSkeleton(currentPoint, skeletonMat, 15);
+            // 直接、理想のX座標（idealX）とY座標（idealY）をバラバラの数字のまま関数に渡しました
+            const snapped = snapPointToSkeleton(idealX, idealY, skeletonMat, 15);
 
             // 3. 線から「結び目のど真ん中（重心）」へさらに吸着
             const center = knotCenter(
