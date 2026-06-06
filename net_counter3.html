@@ -1501,41 +1501,36 @@ function reconstructMissingPoints(
     return recovered;
 }
 
-function gridWarpMLS(i, j, survived){
+function gridWarpMLS(i, j, survivedPoints) {
+    // 💡 1箇所目の変更：alphaを 2.0 ➔ 1.0 に落とします。
+    // これにより、遠くにある生存点の「歪みトレンド」の電波が外側まで届くようになります。
+    const alpha = 1.0; 
 
     let sumW = 0;
+    let sumDx = 0;
+    let sumDy = 0;
 
-    let dx = 0;
-    let dy = 0;
-
-    const alpha = 2.0;
-
-    for(const p of survived){
-
+    for (const p of survivedPoints) {
         const di = p.i - i;
         const dj = p.j - j;
+        const dist2 = di * di + dj * dj;
 
-        const d2 = di*di + dj*dj;
-
-        const w = 1 / Math.pow(d2 + 1, alpha);
+        // 💡 2箇所目の変更：分母の微小値を +1e-6 ➔ +9.0 程度に大きくします。
+        // これにより、外挿エリアに行っても重みが急激にゼロにならず、全体のたるみ感をマイルドに引き継ぎます。
+        const w = 1.0 / Math.pow(dist2 + 9.0, alpha / 2.0);
 
         sumW += w;
-
-        dx += p.dx * w;
-        dy += p.dy * w;
+        sumDx += p.dx * w;
+        sumDy += p.dy * w;
     }
 
-    if(sumW < 1e-6){
-
-        return {
-            dx:0,
-            dy:0
-        };
+    if (sumW === 0) {
+        return { dx: 0, dy: 0 };
     }
 
     return {
-        dx:dx/sumW,
-        dy:dy/sumW
+        dx: sumDx / sumW,
+        dy: sumDy / sumW
     };
 }
 
