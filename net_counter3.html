@@ -658,27 +658,32 @@ function detectAngles(skeletonMat){
         // 欠損補完点の計算
         const recoveredPoints = reconstructMissingPoints(crossPoints, survived);
 
-        // 🟡 ① 生存点（網にピタッと吸着できた信頼できる点）
-        for (const p of survived) {
-            ctx.fillStyle = "yellow";
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
-            ctx.fill();
-        }
+        // ========================================================
+        // 🎯 ④ 描画ループ置換（フィッティング版に一本化）
+        // ========================================================
+        // すべての初期格子点（あなたのコードでの変数名は crossPoints です）をループ
+        for (const p of crossPoints) {
 
-        // 🟠 ② 補完点（不合格だった場所に、背番号から逆算して大復活した点）
-        for (const p of recoveredPoints) {
-            ctx.fillStyle = "orange";
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
-            ctx.fill();
-        }
+            // 💡 高速検索用マップ「survivedMap」を渡して、インデックスから歪み量を計算
+            const warp = gridWarp(
+                p.i,
+                p.j,
+                survivedMap
+            );
 
-        // 🔴 ③ 不合格点（ChatGPTの指示通り、サイズ2の小さな赤点で「ここが穴だよ」と表示）
-        for (const p of rejected) {
-            ctx.fillStyle = "red";
+            // 理想の座標に、計算されたズレ量（dx, dy）を足して最終描画座標を決定！
+            const drawX = p.x + warp.dx;
+            const drawY = p.y + warp.dy;
+
+            ctx.fillStyle = "yellow"; // とりあえず見やすいように黄色で統一して描きます
             ctx.beginPath();
-            ctx.arc(p.x, p.y, 2, 0, Math.PI * 2); // 💡 サイズは少し小さめの 2
+            ctx.arc(
+                drawX,
+                drawY,
+                3,
+                0,
+                Math.PI * 2
+            );
             ctx.fill();
         }
 
@@ -1268,6 +1273,7 @@ function scoreGridPoints(
 function snapGridPoints(scoredPoints, skeletonMat) {
     const survived = [];
     const rejected = [];
+    const survivedMap = {};
 
     for (const p of scoredPoints) {
         // 1️⃣ 先に全員、周囲6pxの吸着探索を実行する！
@@ -1284,21 +1290,24 @@ function snapGridPoints(scoredPoints, skeletonMat) {
             });
         } else {
             // 🟡 合格：吸着後の座標(s.x, s.y)とインデックスを保存
-            survived.push({
+            const pt = {
+                i: p.i,
+                j: p.j,
                 x: s.x,
                 y: s.y,
                 dx: s.dx,
-                dy: s.dy,
-                score: s.score,
-                i: p.i,
-                j: p.j
-            });
+                dy: s.dy
+            };
+
+            survived.push(pt);
+            survivedMap[`${p.i}_${p.j}`] = pt; // キーは ${i}_${j} の形に変更
         }
     }
 
     return {
         survived: survived,
-        rejected: rejected
+        rejected: rejected,
+        survivedMap: survivedMap
     };
 }
 
@@ -1489,73 +1498,67 @@ function reconstructMissingPoints(
     return recovered;
 }
 
-function gridWarp(i,j,survived)
-{
-    let sx=0;
-    let sy=0;
-    let sw=0;
+function gridWarp(i,j,survivedMap){
 
-    for(const p of survived)
-    {
-        const di=i-p.i;
-        const dj=j-p.j;
+    const key = `${i}_${j}`;
 
-        const d=Math.sqrt(di*di+dj*dj);
+    if(survivedMap[key]){
 
-        if(d>8) continue;
-
-        const w=1/(d+0.5);
-
-        sx+=p.dx*w;
-        sy+=p.dy*w;
-        sw+=w;
+        return {
+            dx:survivedMap[key].dx,
+            dy:survivedMap[key].dy
+        };
     }
 
-    if(sw===0)
-        return null;
-
-    return {
-        dx:sx/sw,
-        dy:sy/sw
-    };
+    return affineWarp(i,j,survivedMap);
 }
 
-function affineWarp(i,j,survived)
-{
-    let pts=[];
+function affineWarp(i, j, survivedMap){
 
-    for(const p of survived)
-    {
-        const d=Math.hypot(
-            i-p.i,
-            j-p.j
-        );
+    const neigh = [];
 
-        pts.push({
-            d,
-            p
+    for(const key in survivedMap){
+
+        const p = survivedMap[key];
+
+        const di = p.i - i;
+        const dj = p.j - j;
+
+        const dist2 = di*di + dj*dj;
+
+        neigh.push({
+            dist2,
+            dx:p.dx,
+            dy:p.dy
         });
     }
 
-    pts.sort((a,b)=>a.d-b.d);
+    neigh.sort((a,b)=>a.dist2-b.dist2);
 
-    pts=pts.slice(0,20);
+    const K = Math.min(8, neigh.length);
 
-    if(pts.length<6)
+    let sumW = 0;
+    let sumDx = 0;
+    let sumDy = 0;
+
+    for(let k=0;k<K;k++){
+
+        const n = neigh[k];
+
+        const w = 1 / (Math.sqrt(n.dist2)+1);
+
+        sumW += w;
+        sumDx += n.dx * w;
+        sumDy += n.dy * w;
+    }
+
+    if(sumW===0){
         return {dx:0,dy:0};
-
-    let sx=0;
-    let sy=0;
-
-    for(const q of pts)
-    {
-        sx+=q.p.dx;
-        sy+=q.p.dy;
     }
 
     return {
-        dx:sx/pts.length,
-        dy:sy/pts.length
+        dx:sumDx/sumW,
+        dy:sumDy/sumW
     };
 }
     
