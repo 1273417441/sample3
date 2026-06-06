@@ -1488,6 +1488,76 @@ function reconstructMissingPoints(
 
     return recovered;
 }
+
+function gridWarp(i,j,survived)
+{
+    let sx=0;
+    let sy=0;
+    let sw=0;
+
+    for(const p of survived)
+    {
+        const di=i-p.i;
+        const dj=j-p.j;
+
+        const d=Math.sqrt(di*di+dj*dj);
+
+        if(d>8) continue;
+
+        const w=1/(d+0.5);
+
+        sx+=p.dx*w;
+        sy+=p.dy*w;
+        sw+=w;
+    }
+
+    if(sw===0)
+        return null;
+
+    return {
+        dx:sx/sw,
+        dy:sy/sw
+    };
+}
+
+function affineWarp(i,j,survived)
+{
+    let pts=[];
+
+    for(const p of survived)
+    {
+        const d=Math.hypot(
+            i-p.i,
+            j-p.j
+        );
+
+        pts.push({
+            d,
+            p
+        });
+    }
+
+    pts.sort((a,b)=>a.d-b.d);
+
+    pts=pts.slice(0,20);
+
+    if(pts.length<6)
+        return {dx:0,dy:0};
+
+    let sx=0;
+    let sy=0;
+
+    for(const q of pts)
+    {
+        sx+=q.p.dx;
+        sy+=q.p.dy;
+    }
+
+    return {
+        dx:sx/pts.length,
+        dy:sy/pts.length
+    };
+}
     
 </script>
 
