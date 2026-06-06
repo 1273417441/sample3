@@ -654,32 +654,30 @@ function detectAngles(skeletonMat){
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(src, 0, 0);
 
-        for (const p of snappedPoints) {
-            // スコアが低すぎる（網がない背景部分の）ドットは表示しない
-            if (p.score < 15) continue;
+        const recoveredPoints = reconstructMissingPoints(gridPoints, snappedPoints);
 
-            // ⬇️ 【ココに挿入します！】理想格子点描画前のタイミング
-            const warp = localWarp(p.x, p.y, snappedPoints);
+        // ⬇️ 【これまでのループを削除し、この新しいループに差し替えます】
+        for (const p of recoveredPoints) {
+            
+            // ChatGPTの指示通り、生存点と補完点で色を切り替える
+            if (p.isRecovered) {
+                ctx.fillStyle = "orange"; // 🟠 補完された点
+            } else {
+                ctx.fillStyle = "yellow"; // 🟡 元から生存していた点
+            }
 
-            const drawX = p.x + warp.dx;
-            const drawY = p.y + warp.dy;
-            // ⬆️ 【ココまで】
-
-            // 🔴 赤い線：移動前の位置（p.origX）から、移動後の位置（p.x）へ線を引く
-            ctx.strokeStyle = "red";
-            ctx.lineWidth = 1;
+            // スコア足切りで消えていた場所も含め、すべての格子点（補完点）を描画
             ctx.beginPath();
-            ctx.moveTo(p.origX, p.origY); // ⭕️ 内部で保持した元座標を使う
-            ctx.lineTo(p.x, p.y);         // ⭕️ 中央値補正で移動した後の座標
-            ctx.stroke();
-
-            // 🟡 黄色い点：結び目の真ん中に吸着したドットを描画
-            ctx.fillStyle = "yellow";
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+            ctx.arc(
+                p.x,
+                p.y,
+                3,
+                0,
+                Math.PI * 2
+            );
             ctx.fill();
         }
-    }
+    } // ➔ if文の終わり
     
     skeletonMat.delete();
 }
@@ -1374,6 +1372,125 @@ function localWarp(
         dx:sx/sw,
         dy:sy/sw
     };
+}
+
+function buildGridMap(points){
+
+    const map = new Map();
+
+    for(const p of points){
+
+        const key =
+            p.i + "," + p.j;
+
+        map.set(key,p);
+    }
+
+    return map;
+}
+
+function findMissingGridPoints(
+    allGridPoints,
+    survivedMap
+){
+
+    const missing = [];
+
+    for(const p of allGridPoints){
+
+        const key =
+            p.i + "," + p.j;
+
+        if(!survivedMap.has(key)){
+
+            missing.push(p);
+        }
+    }
+
+    return missing;
+}
+
+function estimateMissingPoint(
+    p,
+    survivedMap
+){
+
+    const L =
+        survivedMap.get(
+            (p.i-1)+","+p.j
+        );
+
+    const R =
+        survivedMap.get(
+            (p.i+1)+","+p.j
+        );
+
+    if(L && R){
+
+        return {
+            x:(L.x+R.x)/2,
+            y:(L.y+R.y)/2,
+            i:p.i,
+            j:p.j,
+            virtual:true
+        };
+    }
+
+    const U =
+        survivedMap.get(
+            p.i+","+(p.j-1)
+        );
+
+    const D =
+        survivedMap.get(
+            p.i+","+(p.j+1)
+        );
+
+    if(U && D){
+
+        return {
+            x:(U.x+D.x)/2,
+            y:(U.y+D.y)/2,
+            i:p.i,
+            j:p.j,
+            virtual:true
+        };
+    }
+
+    return null;
+}
+
+function reconstructMissingPoints(
+    allGridPoints,
+    survivedPoints
+){
+
+    const map =
+        buildGridMap(
+            survivedPoints
+        );
+
+    const missing =
+        findMissingGridPoints(
+            allGridPoints,
+            map
+        );
+
+    const recovered = [];
+
+    for(const p of missing){
+
+        const r =
+            estimateMissingPoint(
+                p,
+                map
+            );
+
+        if(r)
+            recovered.push(r);
+    }
+
+    return recovered;
 }
     
 </script>
