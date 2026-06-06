@@ -659,40 +659,32 @@ function detectAngles(skeletonMat){
         const recoveredPoints = reconstructMissingPoints(crossPoints, survived);
 
         // ========================================================
-        // 🎯 ④ 描画ループ（交点とセル中心の2色描画版にアップデート！）
+        // 🎯 Part10: 交点（黄色）のみを残し、結び目中心へ最終吸着！
         // ========================================================
         
-        // 💡 下準備：generateCellCentersに渡すための、MLS適用済みの完全な座標マップを作ります
-        const computedGridMap = {};
-
-        // 🟡 1. まずはすべての交点をループして黄色で描画
         for (const p of crossPoints) {
+            // 1. まずはMLSで滑らかな「理想のしなり座標」を計算
             const warp = gridWarpMLS(p.i, p.j, survived);
+            const idealX = p.x + warp.dx;
+            const idealY = p.y + warp.dy;
 
-            const drawX = p.x + warp.dx;
-            const drawY = p.y + warp.dy;
+            // 2. 【ChatGPTの指示】理想の座標を、まずはスケルトンの線に吸着
+            const snapped = snapPointToSkeleton(idealX, idealY, skeletonMat, 15);
 
-            // 計算した確定座標を、あとでセル中心の計算に使えるようにマップに保存！
-            computedGridMap[`${p.i}_${p.j}`] = { x: drawX, y: drawY };
+            // 3. 【ChatGPTの指示】ここに追加！線から「結び目のど真ん中（重心）」へさらに吸着
+            const center = knotCenter(
+                snapped.x,
+                snapped.y,
+                skeletonMat
+            );
 
-            // 交点を黄色で描画
-            ctx.fillStyle = "yellow";
-            ctx.beginPath();
-            ctx.arc(drawX, drawY, 3, 0, Math.PI * 2);
-            ctx.fill();
-        }
-
-        // 🔵 2. 【ChatGPTの指定】作成したマップからセル中心の座標群を生成！
-        const centers = generateCellCenters(computedGridMap);
-
-        // 🔵 3. 【ChatGPTの指定】どこに入れるの？ ➔ ここに入れます！シアンでセル中心を描画
-        ctx.fillStyle = "cyan";
-        for (const c of centers) {
+            // 🟡 最終決定した結び目中心（center）の座標を、目標PNGと同じ鮮やかな黄色で描画
+            ctx.fillStyle = "#F5C400";
             ctx.beginPath();
             ctx.arc(
-                c.x,
-                c.y,
-                2,
+                center.x,
+                center.y,
+                4, // ドットの大きさ
                 0,
                 Math.PI * 2
             );
@@ -1621,6 +1613,46 @@ function generateCellCenters(gridMap){
     }
 
     return centers;
+}
+
+function knotCenter(x,y,skeletonMat)
+{
+    let sumX=0;
+    let sumY=0;
+    let count=0;
+
+    const R=8;
+
+    for(let dy=-R;dy<=R;dy++)
+    {
+        for(let dx=-R;dx<=R;dx++)
+        {
+            const px=Math.round(x+dx);
+            const py=Math.round(y+dy);
+
+            if(px<0||py<0||
+               px>=skeletonMat.cols||
+               py>=skeletonMat.rows)
+               continue;
+
+            if(skeletonMat.ucharPtr(py,px)[0]>0)
+            {
+                sumX+=px;
+                sumY+=py;
+                count++;
+            }
+        }
+    }
+
+    if(count===0)
+    {
+        return {x,y};
+    }
+
+    return{
+        x:sumX/count,
+        y:sumY/count
+    };
 }
     
 </script>
