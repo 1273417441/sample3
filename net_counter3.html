@@ -434,13 +434,136 @@ function createMorphImage(binaryMat){
 
 function createSkeletonImage(morphMat){
 
+    const skeletonMat =
+        zhangSuenThinning(morphMat);
+
     cv.imshow(
         "skeletonCanvas",
-        morphMat
+        skeletonMat
     );
 
     morphMat.delete();
+    skeletonMat.delete();
+}
 
+function zhangSuenThinning(src){
+
+    let img = src.clone();
+
+    const rows = img.rows;
+    const cols = img.cols;
+
+    let changed;
+
+    do{
+
+        changed = false;
+
+        changed |= thinningIteration(
+            img,
+            rows,
+            cols,
+            0
+        );
+
+        changed |= thinningIteration(
+            img,
+            rows,
+            cols,
+            1
+        );
+
+    }while(changed);
+
+    return img;
+}
+
+function thinningIteration(
+    img,
+    rows,
+    cols,
+    iter
+){
+
+    const marker =
+        new Uint8Array(rows * cols);
+
+    let changed = false;
+
+    const data = img.data;
+
+    for(let y=1;y<rows-1;y++){
+
+        for(let x=1;x<cols-1;x++){
+
+            const p1 = y*cols+x;
+
+            if(data[p1]===0)
+                continue;
+
+            const p2=data[(y-1)*cols+x];
+            const p3=data[(y-1)*cols+x+1];
+            const p4=data[y*cols+x+1];
+            const p5=data[(y+1)*cols+x+1];
+            const p6=data[(y+1)*cols+x];
+            const p7=data[(y+1)*cols+x-1];
+            const p8=data[y*cols+x-1];
+            const p9=data[(y-1)*cols+x-1];
+
+            const b =
+                (p2>0)+(p3>0)+(p4>0)+
+                (p5>0)+(p6>0)+(p7>0)+
+                (p8>0)+(p9>0);
+
+            if(b<2 || b>6)
+                continue;
+
+            const a =
+                (p2===0&&p3>0)+
+                (p3===0&&p4>0)+
+                (p4===0&&p5>0)+
+                (p5===0&&p6>0)+
+                (p6===0&&p7>0)+
+                (p7===0&&p8>0)+
+                (p8===0&&p9>0)+
+                (p9===0&&p2>0);
+
+            if(a!==1)
+                continue;
+
+            if(iter===0){
+
+                if(
+                    (p2>0 && p4>0 && p6>0) ||
+                    (p4>0 && p6>0 && p8>0)
+                ){
+                    continue;
+                }
+
+            }else{
+
+                if(
+                    (p2>0 && p4>0 && p8>0) ||
+                    (p2>0 && p6>0 && p8>0)
+                ){
+                    continue;
+                }
+            }
+
+            marker[p1]=1;
+        }
+    }
+
+    for(let i=0;i<marker.length;i++){
+
+        if(marker[i]){
+
+            data[i]=0;
+            changed=true;
+        }
+    }
+
+    return changed;
 }
 
 </script>
