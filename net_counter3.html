@@ -1,156 +1,242 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <title>網の直線検出・周期推定テスト</title>
-    <script async src="https://docs.opencv.org/4.x/opencv.js" type="text/javascript"></script>
+<meta charset="UTF-8">
+<title>STEP1 ワイヤ抽出</title>
+
+<style>
+body{
+    background:#111;
+    color:white;
+    font-family:sans-serif;
+    margin:20px;
+}
+
+canvas{
+    border:1px solid #444;
+    max-width:100%;
+}
+
+.row{
+    margin:8px 0;
+}
+
+label{
+    display:inline-block;
+    width:120px;
+}
+
+.value{
+    display:inline-block;
+    width:50px;
+    color:#0f0;
+}
+
+.controls{
+    margin-top:20px;
+    background:#222;
+    padding:10px;
+}
+
+.wrap{
+    display:flex;
+    gap:20px;
+    flex-wrap:wrap;
+}
+</style>
 </head>
 <body>
-    <h2>網の直線検出プロトタイプ（STEP5: 周期推定まで実装）</h2>
-    <input type="file" id="fileInput" accept="image/*"><br><br>
-    
-    <div>
-        <canvas id="canvasInput" style="max-width: 400px;"></canvas>
-        <canvas id="canvasOutput" style="max-width: 400px;"></canvas>
-    </div>
 
-    <script>
-        document.getElementById('fileInput').addEventListener('change', (e) => {
-            let imgElement = document.getElementById('canvasInput');
-            let ctx = imgElement.getContext('2d');
-            let reader = new FileReader();
-            
-            reader.onload = function(event) {
-                let img = new Image();
-                img.onload = function() {
-                    imgElement.width = img.width;
-                    imgElement.height = img.height;
-                    ctx.drawImage(img, 0, 0);
-                    
-                    if (typeof cv !== 'undefined' && cv.Mat) { 
-                        processImageFaithful(); 
-                    } else {
-                        alert("OpenCV.js読み込み中...");
-                    }
-                }
-                img.src = event.target.result;
-            }
-            reader.readAsDataURL(e.target.files[0]);
-        });
+<h2>STEP1 背景除去 → ワイヤ二値化</h2>
 
-        function processImageFaithful() {
-            let src = cv.imread('canvasInput');
-            let hsv = new cv.Mat();
-            let mask = new cv.Mat();
-            let dst = src.clone();
+<input type="file" id="fileInput">
 
-            // ==========================================
-            // STEP 1 & 2: 緑背景除去 & ワイヤ抽出
-            // ==========================================
-            cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
-            cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
-            
-            // 糸の光沢影響を抑えるため、明度(V)の下限を20に設定して背景の影まで確実に緑を拾う
-            let lowGreen = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [35, 40, 20, 0]);
-            let highGreen = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [90, 255, 255, 255]);
-            cv.inRange(hsv, lowGreen, highGreen, mask);
-            cv.bitwise_not(mask, mask); // 反転して網を白に
+<div class="wrap">
 
-            // 穴埋めとシャープ化
-            let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
-            cv.morphologyEx(mask, mask, cv.MORPH_CLOSE, kernel);
-            cv.Canny(mask, mask, 50, 150); // エッジ検出でハフ変換の精度を跳ね上げる
+<div>
+    <h3>元画像</h3>
+    <canvas id="srcCanvas"></canvas>
+</div>
 
-            // 確率的ハフ変換 (一発目のパラメータベース)
-            let lines = new cv.Mat();
-            cv.HoughLinesP(mask, lines, 1, Math.PI / 180, 50, 80, 60);
+<div>
+    <h3>二値化結果</h3>
+    <canvas id="dstCanvas"></canvas>
+</div>
 
-            // ==========================================
-            // STEP 3 & 4: ／方向・＼方向の系列抽出
-            // ==========================================
-            let lineGroup = [];
-            const ANGLE_THRESHOLD = 5;      // 同じ系列とみなす傾きの許容差（度）
-            const INTERCEPT_THRESHOLD = 60;  // 隣のコードと混ざらない最適な距離（ピクセル）
-            let midY = Math.round(src.rows / 2); // 基準となる画像中央のY座標
+</div>
 
-            for (let i = 0; i < lines.rows; ++i) {
-                let x1 = lines.data32S[i * 4];
-                let y1 = lines.data32S[i * 4 + 1];
-                let x2 = lines.data32S[i * 4 + 2];
-                let y2 = lines.data32S[i * 4 + 3];
+<div class="controls">
 
-                let angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
-                if (angle > 90) angle -= 180;
-                if (angle < -90) angle += 180;
+<div class="row">
+<label>Hue Min</label>
+<input type="range" id="hMin" min="0" max="360" value="80">
+<span class="value" id="hMinVal">80</span>
+</div>
 
-                // 網の想定角度（50度〜85度）から外れるノイズを弾く
-                if (Math.abs(angle) < 50 || Math.abs(angle) > 85) continue;
+<div class="row">
+<label>Hue Max</label>
+<input type="range" id="hMax" min="0" max="360" value="180">
+<span class="value" id="hMaxVal">180</span>
+</div>
 
-                let a = (x2 - x1) !== 0 ? (y2 - y1) / (x2 - x1) : 9999;
-                let b = y1 - a * x1;
-                let centerX = (midY - b) / a; // 符号ブレに強い中央X座標で距離判定
+<div class="row">
+<label>Sat Min</label>
+<input type="range" id="sMin" min="0" max="100" value="20">
+<span class="value" id="sMinVal">20</span>
+</div>
 
-                let matched = false;
-                for (let group of lineGroup) {
-                    // 角度が近く、かつ同一系列（centerXの距離が近い）ものをグループ化
-                    if (Math.abs(group.angle - angle) < ANGLE_THRESHOLD && Math.abs(group.centerX - centerX) < INTERCEPT_THRESHOLD) {
-                        // 重み付き平均で系列の中心軸と傾きを動的にフィードバック
-                        group.centerX = (group.centerX * group.lines.length + centerX) / (group.lines.length + 1);
-                        group.angle   = (group.angle * group.lines.length + angle) / (group.lines.length + 1);
-                        group.lines.push({x1, y1, x2, y2, a, b});
-                        matched = true;
-                        break;
-                    }
-                }
+<div class="row">
+<label>Val Min</label>
+<input type="range" id="vMin" min="0" max="100" value="15">
+<span class="value" id="vMinVal">15</span>
+</div>
 
-                if (!matched) {
-                    lineGroup.push({ angle, a, b, centerX, lines: [{x1, y1, x2, y2, a, b}] });
-                }
-            }
+</div>
 
-            // 方向別に系列を分離する（aの正負で完全セパレート）
-            let blueLines = lineGroup.filter(g => g.a < 0).sort((a, b) => a.centerX - b.centerX);
-            let orangeLines = lineGroup.filter(g => g.a >= 0).sort((a, b) => a.centerX - b.centerX);
+<script>
 
-            // ==========================================
-            // STEP 5: 周期推定 (Period Estimation)
-            // ==========================================
-            function estimatePeriod(sortedLines) {
-                if (sortedLines.length < 2) return 0;
-                let intervals = [];
-                for (let i = 0; i < sortedLines.length - 1; i++) {
-                    intervals.push(sortedLines[i+1].centerX - sortedLines[i].centerX);
-                }
-                // 外れ値に強い「中央値（メディアン）」を使って網の正確な周期を算出
-                intervals.sort((a, b) => a - b);
-                return intervals[Math.floor(intervals.length / 2)];
-            }
+const srcCanvas=document.getElementById("srcCanvas");
+const dstCanvas=document.getElementById("dstCanvas");
 
-            let bluePeriod = estimatePeriod(blueLines);
-            let orangePeriod = estimatePeriod(orangeLines);
+const srcCtx=srcCanvas.getContext("2d");
+const dstCtx=dstCanvas.getContext("2d");
 
-            // コンソールログで周期情報を可視化
-            console.log("--- 周期推定結果 ---");
-            console.log("検出された青線（／方向）の系列数:", blueLines.length, "推定周期(ピクセル):", bluePeriod);
-            console.log("検出されたオレンジ線（＼方向）の系列数:", orangeLines.length, "推定周期(ピクセル):", orangePeriod);
+let currentImage=null;
 
-            // 描画処理：一発目のクオリティそのままに、画面いっぱいにブチ抜く直線
-            lineGroup.forEach(group => {
-                let startY = 0;
-                let startX = Math.round((startY - group.b) / group.a);
-                let endY = dst.rows;
-                let endX = Math.round((endY - group.b) / group.a);
+const controls=[
+"hMin",
+"hMax",
+"sMin",
+"vMin"
+];
 
-                let color = (group.a >= 0) ? new cv.Scalar(255, 140, 0, 255) : new cv.Scalar(0, 100, 255, 255);
-                cv.line(dst, new cv.Point(startX, startY), new cv.Point(endX, endY), color, 3);
-            });
+controls.forEach(id=>{
+    const slider=document.getElementById(id);
+    const label=document.getElementById(id+"Val");
 
-            cv.imshow('canvasOutput', dst);
+    slider.addEventListener("input",()=>{
+        label.textContent=slider.value;
 
-            // メモリ解放
-            src.delete(); hsv.delete(); mask.delete(); dst.delete();
-            lines.delete(); kernel.delete(); lowGreen.delete(); highGreen.delete();
+        if(currentImage){
+            processImage();
         }
-    </script>
+    });
+});
+
+document.getElementById("fileInput").addEventListener("change",e=>{
+
+    const file=e.target.files[0];
+    if(!file) return;
+
+    const img=new Image();
+
+    img.onload=()=>{
+
+        currentImage=img;
+
+        srcCanvas.width=img.width;
+        srcCanvas.height=img.height;
+
+        dstCanvas.width=img.width;
+        dstCanvas.height=img.height;
+
+        srcCtx.drawImage(img,0,0);
+
+        processImage();
+    };
+
+    img.src=URL.createObjectURL(file);
+});
+
+function processImage(){
+
+    srcCtx.drawImage(currentImage,0,0);
+
+    const imageData=srcCtx.getImageData(
+        0,
+        0,
+        srcCanvas.width,
+        srcCanvas.height
+    );
+
+    const data=imageData.data;
+
+    const hMin=Number(document.getElementById("hMin").value);
+    const hMax=Number(document.getElementById("hMax").value);
+    const sMin=Number(document.getElementById("sMin").value);
+    const vMin=Number(document.getElementById("vMin").value);
+
+    const out=dstCtx.createImageData(
+        srcCanvas.width,
+        srcCanvas.height
+    );
+
+    const o=out.data;
+
+    for(let i=0;i<data.length;i+=4){
+
+        const r=data[i]/255;
+        const g=data[i+1]/255;
+        const b=data[i+2]/255;
+
+        const hsv=rgbToHsv(r,g,b);
+
+        const h=hsv.h;
+        const s=hsv.s*100;
+        const v=hsv.v*100;
+
+        const isBackground=
+            h>=hMin &&
+            h<=hMax &&
+            s>=sMin &&
+            v>=vMin;
+
+        const color=isBackground ? 0 : 255;
+
+        o[i]=color;
+        o[i+1]=color;
+        o[i+2]=color;
+        o[i+3]=255;
+    }
+
+    dstCtx.putImageData(out,0,0);
+}
+
+function rgbToHsv(r,g,b){
+
+    const max=Math.max(r,g,b);
+    const min=Math.min(r,g,b);
+
+    const d=max-min;
+
+    let h=0;
+
+    if(d!==0){
+
+        if(max===r){
+            h=((g-b)/d)%6;
+        }
+        else if(max===g){
+            h=(b-r)/d+2;
+        }
+        else{
+            h=(r-g)/d+4;
+        }
+
+        h*=60;
+
+        if(h<0){
+            h+=360;
+        }
+    }
+
+    const s=max===0 ? 0 : d/max;
+    const v=max;
+
+    return {h,s,v};
+}
+
+</script>
+
 </body>
 </html>
