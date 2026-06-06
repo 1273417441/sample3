@@ -277,7 +277,7 @@ function processImage(){
         new cv.Point(0, 0),
         new cv.Point(skeletonMat.cols, skeletonMat.rows),
         new cv.Scalar(0),
-        15 // 外周15pxを真っ黒にして罠を解除！
+        30 // 外周15pxを真っ黒にして罠を解除！
     );
 
     detectAngles(skeletonMat);
@@ -761,6 +761,92 @@ function findAnglePeaks(hist){
     return peaks;
 }
 
+// ========================================================
+// 🚀 【Part5核心】角度の組み合わせを総当たりテストして厳選する関数
+// ========================================================
+function evaluateAngles(skeletonMat, candidates) {
+    let bestPair = null;
+    let maxScore = -1;
+
+    // 候補として集まった角度の中から「2つの組み合わせ」を総当たりでテスト！
+    for (let i = 0; i < candidates.length; i++) {
+        for (let j = i + 1; j < candidates.length; j++) {
+            const theta1 = candidates[i];
+            const theta2 = candidates[j];
+
+            // 💡 角度同士が近すぎるもの（ハシゴ線ノイズ同士など）は除外
+            let diffAngle = Math.abs(theta1 - theta2);
+            diffAngle = Math.min(diffAngle, 180 - diffAngle);
+            if (diffAngle < 40) continue; 
+
+            // それぞれの角度で ρ ヒストグラムを生成
+            const hist1 = buildRhoHistogram(skeletonMat, theta1);
+            const hist2 = buildRhoHistogram(skeletonMat, theta2);
+
+            // 💡 それぞれの角度の「山（ピーク）」を探す（ここで20px未満のノイズを弾く！）
+            const peaks1 = findRhoPeaks(hist1, 20); // ← ★これがMIN_RHO_SPACING=20
+            const peaks2 = findRhoPeaks(hist2, 20);
+
+            // ピッチ（網の目の幅）を計算
+            const pitch1 = estimatePitch(peaks1);
+            const pitch2 = estimatePitch(peaks2);
+
+            // ちゃんと網の目として成立しているかチェック（20px〜80pxの間か）
+            if (pitch1 < 20 || pitch1 > 80 || pitch2 < 20 || pitch2 > 80) continue;
+
+            // 周期がどれくらい綺麗に並んでいるかのスコア（山の数が多いほど優秀）
+            const score = peaks1.length + peaks2.length;
+
+            if (score > maxScore) {
+                maxScore = score;
+                bestPair = [
+                    { theta: theta1, pitch: pitch1 },
+                    { theta: theta2, pitch: pitch2 }
+                ];
+            }
+        }
+    }
+
+    // もし良いペアが見つからなかった場合のセーフティ
+    if (!bestPair) {
+        return [
+            { theta: "--", pitch: "--" },
+            { theta: "--", pitch: "--" }
+        ];
+    }
+
+    // θA（小さい方の角度）と θB（大きい方の角度）になるように並び替えて戻す
+    bestPair.sort((a, b) => a.theta - b.theta);
+    return bestPair;
+}
+
+// ========================================================
+// 📦 【新規追加】ρヒストグラムのギザギザから「本物の山」だけを抽出する関数
+// ========================================================
+function findRhoPeaks(hist, minSpacing) {
+    const peaks = [];
+    
+    // ローカルな山（周囲より高い場所）を全探索
+    for (let r = 2; r < hist.length - 2; r++) {
+        if (hist[r] > hist[r-1] && hist[r] > hist[r-2] &&
+            hist[r] > hist[r+1] && hist[r] > hist[r+2] && hist[r] > 10) {
+            
+            // 💡 近すぎる山（20px未満）がないかチェックして、罠を解除する処理！
+            let tooClose = false;
+            for (const p of peaks) {
+                if (Math.abs(r - p) < minSpacing) { // ← ★これが探していた Math.abs です！
+                    tooClose = true;
+                    break;
+                }
+            }
+            if (!tooClose) {
+                peaks.push(r);
+            }
+        }
+    }
+    return peaks;
+}
+    
 function findAngleCandidates(hist){
 
     const peaks=[];
@@ -810,41 +896,20 @@ function findAngleCandidates(hist){
     return peaks;
 }
 
-function evaluateAngles(
-    mat,
-    angles
-){
+function evaluateAngles(angleResult){
 
-    const results=[];
+    const pitch = estimatePitch(angleResult.rhos);
 
-    for(const theta of angles){
-
-        const rhoHist =
-            buildRhoHistogram(
-                mat,
-                theta
-            );
-
-        const pitch =
-            estimatePitch(
-                rhoHist
-            );
-
-        results.push({
-            theta,
-            pitch:
-                pitch.pitch,
-            score:
-                pitch.score
-        });
+    // ★ミクロ周期は失格
+    if(pitch < 20){
+        return 0;
     }
 
-    results.sort(
-        (a,b)=>
-            b.score-a.score
-    );
+    if(pitch > 80){
+        return 0;
+    }
 
-    return results.slice(0,2);
+    return angleResult.peaks.length;
 }
 
 function buildRhoHistogram(
@@ -901,43 +966,34 @@ function buildRhoHistogram(
     return hist;
 }
 
-function estimatePitch(
-    hist
-){
+function estimatePitch(rhoList){
 
-    let bestPitch=0;
-    let bestScore=0;
-
-    for(
-        let pitch=5;
-        pitch<100;
-        pitch++
-    ){
-
-        let score=0;
-
-        for(
-            let i=0;
-            i<hist.length-pitch;
-            i++
-        ){
-
-            score +=
-                hist[i] *
-                hist[i+pitch];
-        }
-
-        if(score>bestScore){
-
-            bestScore=score;
-            bestPitch=pitch;
-        }
+    if(rhoList.length < 4){
+        return 0;
     }
 
-    return {
-        pitch:bestPitch,
-        score:bestScore
-    };
+    rhoList.sort((a,b)=>a-b);
+
+    const diffs = [];
+
+    for(let i=1;i<rhoList.length;i++){
+
+        const d = rhoList[i]-rhoList[i-1];
+
+        // ★重要
+        if(d < 20) continue;
+        if(d > 80) continue;
+
+        diffs.push(d);
+    }
+
+    if(diffs.length===0){
+        return 0;
+    }
+
+    diffs.sort((a,b)=>a-b);
+
+    return diffs[Math.floor(diffs.length/2)];
 }
 
 </script>
