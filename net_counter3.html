@@ -1278,13 +1278,13 @@ function scoreGridPoints(
             x: item.orig.x + globalDx,
             y: item.orig.y + globalDy,
             score: item.snapped.score, // 吸着先のスコアを引き継ぐ
-            origX: item.orig.x,        // デバッグ（赤線）用の元の位置
+            origX: item.orig.x,        // デバッグ赤線用の元座標
             origY: item.orig.y
         });
     }
 
     return finalPoints;
-}
+} // 📍ここが snapGridPoints 関数の終わりです
     
 </script>
 
