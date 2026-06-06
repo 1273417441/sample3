@@ -658,6 +658,13 @@ function detectAngles(skeletonMat){
             // スコアが低すぎる（網がない背景部分の）ドットは表示しない
             if (p.score < 15) continue;
 
+            // ⬇️ 【ココに挿入します！】理想格子点描画前のタイミング
+            const warp = localWarp(p.x, p.y, snappedPoints);
+
+            const drawX = p.x + warp.dx;
+            const drawY = p.y + warp.dy;
+            // ⬆️ 【ココまで】
+
             // 🔴 赤い線：移動前の位置（p.origX）から、移動後の位置（p.x）へ線を引く
             ctx.strokeStyle = "red";
             ctx.lineWidth = 1;
@@ -1237,6 +1244,8 @@ function scoreGridPoints(
     return {
         x: bestX,
         y: bestY,
+        dx: bestX - p.x, // 💡 追加：元の位置からX方向にどれだけ動いたか
+        dy: bestY - p.y, // 💡 追加：元の位置からY方向にどれだけ動いたか
         score: bestScore
     };
 }
@@ -1286,6 +1295,74 @@ function scoreGridPoints(
 
     return finalPoints;
 } // 📍ここが snapGridPoints 関数の終わりです
+
+function estimateGlobalWarp(snappedPoints){
+
+    const dxs = [];
+    const dys = [];
+
+    for(const p of snappedPoints){
+
+        dxs.push(p.dx);
+        dys.push(p.dy);
+    }
+
+    dxs.sort((a,b)=>a-b);
+    dys.sort((a,b)=>a-b);
+
+    const mdx =
+        dxs[Math.floor(dxs.length/2)];
+
+    const mdy =
+        dys[Math.floor(dys.length/2)];
+
+    return {
+        dx: mdx,
+        dy: mdy
+    };
+}
+
+function localWarp(
+    x,
+    y,
+    snappedPoints,
+    radius = 80
+){
+
+    let sx=0;
+    let sy=0;
+    let sw=0;
+
+    for(const p of snappedPoints){
+
+        const ddx =
+            p.x - x;
+
+        const ddy =
+            p.y - y;
+
+        const d2 =
+            ddx*ddx + ddy*ddy;
+
+        if(d2 > radius*radius)
+            continue;
+
+        const w =
+            1/(d2+1);
+
+        sx += p.dx*w;
+        sy += p.dy*w;
+        sw += w;
+    }
+
+    if(sw===0)
+        return {dx:0,dy:0};
+
+    return {
+        dx:sx/sw,
+        dy:sy/sw
+    };
+}
     
 </script>
 
