@@ -34,7 +34,9 @@ h2{
 
 canvas{
     border:1px solid #444;
-    max-width:600px;
+    max-width:100%;  /* 💡 画面からはみ出さないように安全に制限 */
+    height: auto;    /* 💡 縦横比（アスペクト比）を完全に維持する */
+    width: 400px;    /* 💡 他のキャンバス（元画像など）と横幅を綺麗に揃える */
 }
 
 .controls{
