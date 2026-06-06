@@ -420,10 +420,6 @@ function createMorphImage(binaryMat){
         iterations
     );
     
-    console.log(
-        morphMat.type()
-    );
-    
     cv.imshow(
         "morphCanvas",
         morph
@@ -440,7 +436,11 @@ function createSkeletonImage(morphMat){
 
     const skeletonMat =
         zhangSuenThinning(morphMat);
-
+        
+    console.log(
+        morphMat.type()
+    );
+    
     cv.imshow(
         "skeletonCanvas",
         skeletonMat
