@@ -1027,11 +1027,17 @@ function buildCrossPoints(linesA, linesB){
 
     const pts = [];
 
-    for(const a of linesA){
+    // ⭕️ linesA のループにカウンター「i」を導入
+    for (let i = 0; i < linesA.length; i++) {
+        const a = linesA[i];
+        
         const ca = Math.cos(a.theta);
         const sa = Math.sin(a.theta);
 
-        for(const b of linesB){
+        // ⭕️ linesB のループにカウンター「j」を導入
+        for (let j = 0; j < linesB.length; j++) {
+            const b = linesB[j];
+            
             const cb = Math.cos(b.theta);
             const sb = Math.sin(b.theta);
 
@@ -1042,7 +1048,13 @@ function buildCrossPoints(linesA, linesB){
             const x = (a.rho*sb - b.rho*sa) / det;
             const y = (b.rho*ca - a.rho*cb) / det;
 
-            pts.push({x,y});
+            // ⭕️ 座標と一緒に、格子インデックス（i, j）をセットして保存します！
+            pts.push({
+                x: x,
+                y: y,
+                i: i,
+                j: j
+            });
         }
     }
     return pts;
