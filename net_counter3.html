@@ -643,10 +643,11 @@ function detectAngles(skeletonMat){
 
         const scoredPoints = scoreGridPoints(crossPoints, skeletonMat);
 
-        const snappedPoints = snapGridPoints(scoredPoints, skeletonMat);
+        // ⭕️ 分割代入で合格(survived)と不合格(rejected)を受け取る
+        const { survived, rejected } = snapGridPoints(scoredPoints, skeletonMat);
 
         // ========================================================
-        // 🎯 Part8-2 & 8-3: 描画（吸着ドット ＆ 赤い線デバッグ）
+        // 🎯 Part9: 3色デバッグ描画（黄・オレンジ・赤）
         // ========================================================
         const canvas = document.getElementById("gridCanvas");
         const ctx = canvas.getContext("2d");
@@ -654,22 +655,30 @@ function detectAngles(skeletonMat){
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(src, 0, 0);
 
-        const recoveredPoints = reconstructMissingPoints(crossPoints, snappedPoints);
+        // 欠損補完点の計算
+        const recoveredPoints = reconstructMissingPoints(crossPoints, survived);
 
-        // ⬇️ 【これまでのループを削除し、この新しいループに差し替えます】
-        // 🟡 ① まずは元から生き残っている「生存点」を黄色で描画
-        for (const p of snappedPoints) {
+        // 🟡 ① 生存点（網にピタッと吸着できた信頼できる点）
+        for (const p of survived) {
             ctx.fillStyle = "yellow";
             ctx.beginPath();
             ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
             ctx.fill();
         }
 
-        // 🟠 ② 次に、背番号から逆算して大復活した「補完点」をオレンジ色で描画
+        // 🟠 ② 補完点（不合格だった場所に、背番号から逆算して大復活した点）
         for (const p of recoveredPoints) {
             ctx.fillStyle = "orange";
             ctx.beginPath();
             ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // 🔴 ③ 不合格点（ChatGPTの指示通り、サイズ2の小さな赤点で「ここが穴だよ」と表示）
+        for (const p of rejected) {
+            ctx.fillStyle = "red";
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 2, 0, Math.PI * 2); // 💡 サイズは少し小さめの 2
             ctx.fill();
         }
 
@@ -1256,51 +1265,42 @@ function scoreGridPoints(
     };
 }
 
-    function snapGridPoints(scoredPoints, skeletonMat) {
-    const dxList = [];
-    const dyList = [];
-    const validPoints = [];
+function snapGridPoints(scoredPoints, skeletonMat) {
+    const survived = [];
+    const rejected = [];
 
-    // 📍 各点がどれだけ動きたいか（理想と現実のズレ）を調べる
     for (const p of scoredPoints) {
-        if (p.score < 5) continue; // 網から外れている点は無視
-
+        // 1️⃣ 先に全員、周囲6pxの吸着探索を実行する！
         const s = snapPointToSkeleton(p, skeletonMat, 6);
         
-        // 元の位置からどれだけ動いたか（移動量）を記録
-        dxList.push(s.x - p.x);
-        dyList.push(s.y - p.y);
-        
-        validPoints.push({ orig: p, snapped: s });
+        // 2️⃣ 吸着した「後」のスコアで合格・不合格をジャッジ（基準は10）
+        if (s.score < 10) {
+            // 🔴 不合格：元の理想点座標とインデックスを赤点用に保存
+            rejected.push({
+                x: p.x,
+                y: p.y,
+                i: p.i,
+                j: p.j
+            });
+        } else {
+            // 🟡 合格：吸着後の座標(s.x, s.y)とインデックスを保存
+            survived.push({
+                x: s.x,
+                y: s.y,
+                dx: s.dx,
+                dy: s.dy,
+                score: s.score,
+                i: p.i,
+                j: p.j
+            });
+        }
     }
 
-    if (validPoints.length === 0) return [];
-
-    // 📍 移動量の中央値（メディアン：多数決）を計算するヘルパー関数
-    const median = (arr) => {
-        if (arr.length === 0) return 0;
-        const sorted = [...arr].sort((a, b) => a - b);
-        const mid = Math.floor(sorted.length / 2);
-        return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    return {
+        survived: survived,
+        rejected: rejected
     };
-
-    const globalDx = median(dxList);
-    const globalDy = median(dyList);
-
-    // 📍 【Part8-3本命】個々の暴走を無視し、全員一律で「中央値の分だけ」カチッとズラす
-    const finalPoints = [];
-    for (const item of validPoints) {
-        finalPoints.push({
-            x: item.orig.x + globalDx,
-            y: item.orig.y + globalDy,
-            score: item.snapped.score, // 吸着先のスコアを引き継ぐ
-            origX: item.orig.x,        // デバッグ赤線用の元座標
-            origY: item.orig.y
-        });
-    }
-
-    return finalPoints;
-} // 📍ここが snapGridPoints 関数の終わりです
+}
 
 function estimateGlobalWarp(snappedPoints){
 
