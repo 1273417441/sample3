@@ -641,11 +641,7 @@ function detectAngles(skeletonMat){
 
         const crossPoints = buildCrossPoints(idealA, idealB);
 
-        const scoredPoints =
-            scoreGridPoints(
-                crossPoints,
-                skeleton
-        );
+        const scoredPoints = scoreGridPoints(crossPoints, skeletonMat);
 
         // ========================================================
         // 🎯 Part8-2: 描画（ここに追加します！）
