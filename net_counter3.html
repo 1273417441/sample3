@@ -1071,39 +1071,23 @@ function buildCrossPoints(linesA, linesB){
 
 function drawGridPoints(canvas, pts){
 
-    const ctx =
-        canvas.getContext("2d");
+    const ctx = canvas.getContext("2d");
 
-    ctx.clearRect(
-        0,
-        0,
-        canvas.width,
-        canvas.height
-    );
+    // 📍 黒でクリアする代わりに、左端の「元画像（srcCanvas）」を背景として丸ごとコピーして描画する
+    const src = document.getElementById("srcCanvas");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(src, 0, 0);
 
-    ctx.fillStyle="yellow";
+    // その上に、計算された理想の交点群を黄色い丸としてプロット
+    ctx.fillStyle = "yellow";
 
     for(const p of pts){
-
-        if(
-            p.x<0 ||
-            p.y<0 ||
-            p.x>=canvas.width ||
-            p.y>=canvas.height
-        ){
+        if(p.x < 0 || p.y < 0 || p.x >= canvas.width || p.y >= canvas.height){
             continue;
         }
 
         ctx.beginPath();
-
-        ctx.arc(
-            p.x,
-            p.y,
-            3,
-            0,
-            Math.PI*2
-        );
-
+        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
         ctx.fill();
     }
 }
