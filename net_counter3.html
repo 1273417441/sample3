@@ -646,7 +646,7 @@ function detectAngles(skeletonMat){
         const snappedPoints = snapGridPoints(scoredPoints, skeletonMat);
 
         // ========================================================
-        // 🎯 Part8-2: 描画（ここに追加します！）
+        // 🎯 Part8-2 & 8-3: 描画（吸着ドット ＆ 赤い線デバッグ）
         // ========================================================
         const canvas = document.getElementById("gridCanvas");
         const ctx = canvas.getContext("2d");
@@ -655,28 +655,23 @@ function detectAngles(skeletonMat){
         ctx.drawImage(src, 0, 0);
 
         for (const p of snappedPoints) {
-            if (p.score < 5) continue;
+            // スコアが低すぎる（網がない背景部分の）ドットは表示しない
+            if (p.score < 15) continue;
 
-            // まずは色（スコアが5以上の良い点）で確認するための描画
+            // 🔴 赤い線：元の位置（p.origX, p.origY）から、移動後の位置（p.x, p.y）へ線を引く
+            ctx.strokeStyle = "red";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(p.origX, p.origY); // ⭕️ p.origX に修正
+            ctx.lineTo(p.x, p.y);
+            ctx.stroke();
+
+            // 🟡 黄色い点：結び目の真ん中に吸着したドットを描画
             ctx.fillStyle = "yellow";
             ctx.beginPath();
             ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
             ctx.fill();
-
-            ctx.strokeStyle = "red";
-            ctx.beginPath();
-            ctx.moveTo(orig.x, orig.y);
-            ctx.lineTo(p.x, p.y);
-            ctx.stroke();
         }
-        
-        /* ❌ 古い一括描画は無効化します
-        drawGridPoints(
-            document.getElementById("gridCanvas"),
-            crossPoints
-        );
-        */
-    }
     
     skeletonMat.delete();
 }
@@ -1245,29 +1240,50 @@ function scoreGridPoints(
     };
 }
 
-    function snapGridPoints(
-    scoredPoints,
-    skeletonMat
-){
+    function snapGridPoints(scoredPoints, skeletonMat) {
+    const dxList = [];
+    const dyList = [];
+    const validPoints = [];
 
-    const snapped = [];
+    // 📍 各点がどれだけ動きたいか（理想と現実のズレ）を調べる
+    for (const p of scoredPoints) {
+        if (p.score < 5) continue; // 網から外れている点は無視
 
-    for(const p of scoredPoints){
-
-        if(p.score < 5)
-            continue;
-
-        const s =
-            snapPointToSkeleton(
-                p,
-                skeletonMat,
-                6
-            );
-
-        snapped.push(s);
+        const s = snapPointToSkeleton(p, skeletonMat, 6);
+        
+        // 元の位置からどれだけ動いたか（移動量）を記録
+        dxList.push(s.x - p.x);
+        dyList.push(s.y - p.y);
+        
+        validPoints.push({ orig: p, snapped: s });
     }
 
-    return snapped;
+    if (validPoints.length === 0) return [];
+
+    // 📍 移動量の中央値（メディアン：多数決）を計算するヘルパー関数
+    const median = (arr) => {
+        if (arr.length === 0) return 0;
+        const sorted = [...arr].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    };
+
+    const globalDx = median(dxList);
+    const globalDy = median(dyList);
+
+    // 📍 【Part8-3本命】個々の暴走を無視し、全員一律で「中央値の分だけ」カチッとズラす
+    const finalPoints = [];
+    for (const item of validPoints) {
+        finalPoints.push({
+            x: item.orig.x + globalDx,
+            y: item.orig.y + globalDy,
+            score: item.snapped.score, // 吸着先のスコアを引き継ぐ
+            origX: item.orig.x,        // デバッグ（赤線）用の元の位置
+            origY: item.orig.y
+        });
+    }
+
+    return finalPoints;
 }
     
 </script>
