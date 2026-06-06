@@ -643,8 +643,8 @@ function detectAngles(skeletonMat){
 
         const scoredPoints = scoreGridPoints(crossPoints, skeletonMat);
 
-        // ⭕️ 分割代入で合格(survived)と不合格(rejected)を受け取る
-        const { survived, rejected } = snapGridPoints(scoredPoints, skeletonMat);
+        // ⭕️ 修正後のコード
+        const { survived, rejected, survivedMap } = snapGridPoints(scoredPoints, skeletonMat);
 
         // ========================================================
         // 🎯 Part9: 3色デバッグ描画（黄・オレンジ・赤）
