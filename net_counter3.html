@@ -32,11 +32,12 @@ h2{
     flex-direction:column;
 }
 
+/* 📍 縦横比を完全に維持し、全キャンバスの表示サイズを400px幅に統一 */
 canvas{
     border:1px solid #444;
-    max-width:100%;  /* 💡 画面からはみ出さないように安全に制限 */
-    height: auto;    /* 💡 縦横比（アスペクト比）を完全に維持する */
-    width: 400px;    /* 💡 他のキャンバス（元画像など）と横幅を綺麗に揃える */
+    max-width:100%;
+    height: auto;
+    width: 400px; 
 }
 
 .controls{
@@ -177,6 +178,7 @@ const srcCanvas = document.getElementById("srcCanvas");
 const binaryCanvas = document.getElementById("binaryCanvas");
 const morphCanvas = document.getElementById("morphCanvas");
 const skeletonCanvas = document.getElementById("skeletonCanvas");
+const gridCanvas = document.getElementById("gridCanvas"); // 📍 追加
 
 const statusEl = document.getElementById("status");
 
@@ -230,13 +232,15 @@ document.getElementById("fileInput").addEventListener("change",e=>{
 
 });
 
+// 📍 【最重要修正】gridCanvasの内部サイズも元画像と完全に一致させる
 function setupCanvasSize(img){
 
     const list = [
         srcCanvas,
         binaryCanvas,
         morphCanvas,
-        skeletonCanvas
+        skeletonCanvas,
+        gridCanvas // 👈 ここに gridCanvas を追加し忘れていたのが原因でした！
     ];
 
     list.forEach(c=>{
@@ -278,13 +282,12 @@ function processImage(){
 
     const skeletonMat = createSkeletonImage(morphMat);
 
-    // ★ここにChatGPTの外枠消去コードを挟み込みます！
     cv.rectangle(
         skeletonMat,
         new cv.Point(0, 0),
         new cv.Point(skeletonMat.cols, skeletonMat.rows),
         new cv.Scalar(0),
-        30 // 外周15pxを真っ黒にして罠を解除！
+        30 
     );
 
     detectAngles(skeletonMat);
@@ -428,10 +431,6 @@ function createMorphImage(binaryMat){
             )
         );
 
-    //
-    // OPEN
-    //
-
     cv.morphologyEx(
         morph,
         morph,
@@ -440,10 +439,6 @@ function createMorphImage(binaryMat){
         new cv.Point(-1,-1),
         iterations
     );
-
-    //
-    // CLOSE
-    //
 
     cv.morphologyEx(
         morph,
@@ -470,10 +465,6 @@ function createSkeletonImage(morphMat){
 
     const skeletonMat =
         zhangSuenThinning(morphMat);
-        
-    console.log(
-        morphMat.type()
-    );
     
     cv.imshow(
         "skeletonCanvas",
@@ -604,6 +595,7 @@ function thinningIteration(
     return changed;
 }
 
+// 📍 司令塔関数
 function detectAngles(skeletonMat){
 
     const hist =
@@ -623,9 +615,7 @@ function detectAngles(skeletonMat){
     document.getElementById("pitchA").textContent = best[0].pitch;
     document.getElementById("pitchB").textContent = best[1].pitch;
 
-    // 📍【修正ポイント】安全に存在チェックをし、正しい変数名（bestやskeletonMat）に修正
     if (best[0].theta !== "--" && best[0].pitch !== "--" && best[1].theta !== "--") {
-        
         const idealA = buildIdealLines(
             best[0].theta,
             best[0].pitch,
@@ -646,8 +636,8 @@ function detectAngles(skeletonMat){
             document.getElementById("gridCanvas"),
             crossPoints
         );
-    } // 👈 📍【修正ポイント】消えていた閉じカッコを追加！
-        
+    }
+    
     skeletonMat.delete();
 }
 
@@ -747,86 +737,31 @@ function smoothHistogram(
 
     return out;
 }
-    
-function findAnglePeaks(hist){
 
-    const peaks=[];
-
-    const tmp=
-        hist.map(
-            (v,i)=>({a:i,v})
-        );
-
-    tmp.sort(
-        (a,b)=>b.v-a.v
-    );
-
-    for(const p of tmp){
-
-        let ok=true;
-
-        for(const q of peaks){
-
-            let d=
-                Math.abs(p.a-q);
-
-            d=Math.min(d,180-d);
-
-            if(d<40){
-
-                ok=false;
-                break;
-            }
-        }
-
-        if(ok){
-
-            peaks.push(p.a);
-        }
-
-        if(peaks.length===2){
-
-            break;
-        }
-    }
-
-    return peaks;
-}
-
-// ========================================================
-// 🚀 【Part5核心】角度の組み合わせを総当たりテストして厳選する関数
-// ========================================================
 function evaluateAngles(skeletonMat, candidates) {
     let bestPair = null;
     let maxScore = -1;
 
-    // 候補として集まった角度の中から「2つの組み合わせ」を総当たりでテスト！
     for (let i = 0; i < candidates.length; i++) {
         for (let j = i + 1; j < candidates.length; j++) {
             const theta1 = candidates[i];
             const theta2 = candidates[j];
 
-            // 💡 角度同士が近すぎるもの（ハシゴ線ノイズ同士など）は除外
             let diffAngle = Math.abs(theta1 - theta2);
             diffAngle = Math.min(diffAngle, 180 - diffAngle);
             if (diffAngle < 40) continue; 
 
-            // それぞれの角度で ρ ヒストグラムを生成
             const hist1 = buildRhoHistogram(skeletonMat, theta1);
             const hist2 = buildRhoHistogram(skeletonMat, theta2);
 
-            // 💡 それぞれの角度の「山（ピーク）」を探す（ここで20px未満のノイズを弾く！）
-            const peaks1 = findRhoPeaks(hist1, 20); // ← ★これがMIN_RHO_SPACING=20
+            const peaks1 = findRhoPeaks(hist1, 20); 
             const peaks2 = findRhoPeaks(hist2, 20);
 
-            // ピッチ（網の目の幅）を計算
             const pitch1 = estimatePitch(peaks1);
             const pitch2 = estimatePitch(peaks2);
 
-            // ちゃんと網の目として成立しているかチェック（20px〜80pxの間か）
             if (pitch1 < 20 || pitch1 > 80 || pitch2 < 20 || pitch2 > 80) continue;
 
-            // 周期がどれくらい綺麗に並んでいるかのスコア（山の数が多いほど優秀）
             const score = peaks1.length + peaks2.length;
 
             if (score > maxScore) {
@@ -839,7 +774,6 @@ function evaluateAngles(skeletonMat, candidates) {
         }
     }
 
-    // もし良いペアが見つからなかった場合のセーフティ
     if (!bestPair) {
         return [
             { theta: "--", pitch: "--" },
@@ -847,26 +781,20 @@ function evaluateAngles(skeletonMat, candidates) {
         ];
     }
 
-    // θA（小さい方の角度）と θB（大きい方の角度）になるように並び替えて戻す
     bestPair.sort((a, b) => a.theta - b.theta);
     return bestPair;
 }
 
-// ========================================================
-// 📦 【新規追加】ρヒストグラムのギザギザから「本物の山」だけを抽出する関数
-// ========================================================
 function findRhoPeaks(hist, minSpacing) {
     const peaks = [];
     
-    // ローカルな山（周囲より高い場所）を全探索
     for (let r = 2; r < hist.length - 2; r++) {
         if (hist[r] > hist[r-1] && hist[r] > hist[r-2] &&
             hist[r] > hist[r+1] && hist[r] > hist[r+2] && hist[r] > 10) {
             
-            // 💡 近すぎる山（20px未満）がないかチェックして、罠を解除する処理！
             let tooClose = false;
             for (const p of peaks) {
-                if (Math.abs(r - p) < minSpacing) { // ← ★これが探していた Math.abs です！
+                if (Math.abs(r - p) < minSpacing) {
                     tooClose = true;
                     break;
                 }
@@ -996,7 +924,6 @@ function estimatePitch(rhoList){
 
         const d = rhoList[i]-rhoList[i-1];
 
-        // ★重要
         if(d < 20) continue;
         if(d > 80) continue;
 
@@ -1015,23 +942,18 @@ function estimatePitch(rhoList){
 function buildIdealLines(thetaDeg, pitch, width, height){
 
     const theta = thetaDeg * Math.PI / 180;
-
     const cosT = Math.cos(theta);
     const sinT = Math.sin(theta);
 
     const diag = Math.sqrt(width*width + height*height);
-
     const lines = [];
 
     for(let rho=-diag; rho<=diag; rho+=pitch){
-
         lines.push({
             theta: theta,
             rho: rho
         });
-
     }
-
     return lines;
 }
 
@@ -1040,56 +962,49 @@ function buildCrossPoints(linesA, linesB){
     const pts = [];
 
     for(const a of linesA){
-
         const ca = Math.cos(a.theta);
         const sa = Math.sin(a.theta);
 
         for(const b of linesB){
-
             const cb = Math.cos(b.theta);
             const sb = Math.sin(b.theta);
 
-            const det =
-                ca*sb -
-                cb*sa;
+            const det = ca*sb - cb*sa;
 
-            if(Math.abs(det)<1e-6)
-                continue;
+            if(Math.abs(det)<1e-6) continue;
 
-            const x =
-                (a.rho*sb - b.rho*sa)
-                / det;
-
-            const y =
-                (b.rho*ca - a.rho*cb)
-                / det;
+            const x = (a.rho*sb - b.rho*sa) / det;
+            const y = (b.rho*ca - a.rho*cb) / det;
 
             pts.push({x,y});
         }
     }
-
     return pts;
 }
 
+// 📍 【背景描画】元画像全体を背景として綺麗にコピーする
 function drawGridPoints(canvas, pts){
 
     const ctx = canvas.getContext("2d");
 
-    // 📍 黒でクリアする代わりに、左端の「元画像（srcCanvas）」を背景として丸ごとコピーして描画する
     const src = document.getElementById("srcCanvas");
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(src, 0, 0);
 
-    // その上に、計算された理想の交点群を黄色い丸としてプロット
     ctx.fillStyle = "yellow";
 
     for(const p of pts){
-        if(p.x < 0 || p.y < 0 || p.x >= canvas.width || p.y >= canvas.height){
+        if(
+            p.x < 0 ||
+            p.y < 0 ||
+            p.x >= canvas.width ||
+            p.y >= canvas.height
+        ){
             continue;
         }
 
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, 3, 0, Math.PI*2);
         ctx.fill();
     }
 }
