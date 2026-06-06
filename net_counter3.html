@@ -641,10 +641,37 @@ function detectAngles(skeletonMat){
 
         const crossPoints = buildCrossPoints(idealA, idealB);
 
+        const scoredPoints =
+            scoreGridPoints(
+                crossPoints,
+                skeleton
+        );
+
+        // ========================================================
+        // 🎯 Part8-2: 描画（ここに追加します！）
+        // ========================================================
+        const canvas = document.getElementById("gridCanvas");
+        const ctx = canvas.getContext("2d");
+        const src = document.getElementById("srcCanvas");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(src, 0, 0);
+
+        for (const p of scoredPoints) {
+            if (p.score < 5) continue;
+
+            // まずは色（スコアが5以上の良い点）で確認するための描画
+            ctx.fillStyle = "yellow";
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        /* ❌ 古い一括描画は無効化します
         drawGridPoints(
             document.getElementById("gridCanvas"),
             crossPoints
         );
+        */
     }
     
     skeletonMat.delete();
@@ -1076,6 +1103,92 @@ function estimateRhoStart(peaks, pitch){
     }
 
     return bestPhase;
+}
+    
+function skeletonDensity(
+    skeleton,
+    cx,
+    cy,
+    radius
+){
+
+    let count = 0;
+
+    const x0 =
+        Math.max(
+            0,
+            Math.floor(cx-radius)
+        );
+
+    const x1 =
+        Math.min(
+            skeleton.cols-1,
+            Math.ceil(cx+radius)
+        );
+
+    const y0 =
+        Math.max(
+            0,
+            Math.floor(cy-radius)
+        );
+
+    const y1 =
+        Math.min(
+            skeleton.rows-1,
+            Math.ceil(cy+radius)
+        );
+
+    for(let y=y0;y<=y1;y++){
+
+        for(let x=x0;x<=x1;x++){
+
+            const dx=x-cx;
+            const dy=y-cy;
+
+            if(
+                dx*dx+dy*dy >
+                radius*radius
+            ){
+                continue;
+            }
+
+            if(
+                skeleton.ucharPtr(y,x)[0]
+                >0
+            ){
+                count++;
+            }
+        }
+    }
+
+    return count;
+}
+
+function scoreGridPoints(
+    points,
+    skeleton
+){
+
+    const out=[];
+
+    for(const p of points){
+
+        const score =
+            skeletonDensity(
+                skeleton,
+                p.x,
+                p.y,
+                8
+            );
+
+        out.push({
+            x:p.x,
+            y:p.y,
+            score
+        });
+    }
+
+    return out;
 }
     
 </script>
