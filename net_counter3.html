@@ -658,11 +658,11 @@ function detectAngles(skeletonMat){
         ctx.drawImage(src, 0, 0);
 
         // ========================================================
-        // 🎯 Part11ステップ1: junctionScoreを使って一本道を除去！
+        // 🎯 Part11ステップ1（修正版）: junctionScoreで一本道だけを綺麗にスルー！
         // ========================================================
         for (const p of crossPoints) {
             
-            // 1. まずはMLSで滑らかな理想しなり座標を計算
+            // 1. まずはMLSで滑らかな理想しなり座標を計算（これをベースにします）
             const warp = gridWarpMLS(p.i, p.j, survived);
             let drawX = p.x + warp.dx;
             let drawY = p.y + warp.dy;
@@ -671,14 +671,13 @@ function detectAngles(skeletonMat){
             const isSurvived = survivedMap[`${p.i}_${p.j}`];
 
             if (isSurvived) {
-                // 【YES：中央部】実網の交差点なので、スケルトン線へ吸着
+                // 【YES：中央部】実網のエリアなので、まずは骨組みに仮吸着させてみる
                 const currentPt = { x: drawX, y: drawY };
                 const snapped = snapPointToSkeleton(currentPt, skeletonMat, 15);
 
-                // 🌟 【いまやる修正】吸着した場所が、本当に4方向以上に分岐した「結び目」か厳格チェック！
-                // (ChatGPTの指示通り、閾値を「5以上」に設定して、一本道を徹底的にハネます)
+                // 🌟 ここで「真の交差点（5以上）」かチェック！
                 if (junctionScore(snapped.x, snapped.y, skeletonMat) >= 5) {
-                    // 5以上なら真の結び目！お団子のど真ん中へ強力吸着
+                    // 交差点なら合格！お団子のど真ん中へ強力吸着
                     const center = knotCenter(
                         snapped.x,
                         snapped.y,
@@ -687,7 +686,8 @@ function detectAngles(skeletonMat){
                     drawX = center.x;
                     drawY = center.y;
                 } else {
-                    // 4以下（一本道の途中など）なら、誤吸着させずにMLSの理想座標のまま流す
+                    // ➔【ここを修正】交差点じゃない（一本道）なら、
+                    // 変に吸着させず、1で計算した「MLSの理想座標」のまま真っ直ぐ描画させる！
                 }
                 
             } else {
@@ -700,7 +700,7 @@ function detectAngles(skeletonMat){
             ctx.arc(
                 drawX,
                 drawY,
-                4, // ドットの大きさ
+                4, 
                 0,
                 Math.PI * 2
             );
