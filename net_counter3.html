@@ -614,8 +614,13 @@ function detectAngles(skeletonMat){
         const peaksA = best[0].peaks; // ★ Part5のピーク検出結果を保持！
         const peaksB = best[1].peaks; // ★ Part5のピーク検出結果を保持！
 
-        const rhoStartA = estimateRhoStart(peaksA, pitchA);
-        const rhoStartB = estimateRhoStart(peaksB, pitchB);
+        // 📍 【修正箇所1】画像の幅(w)と高さ(h)をしっかり定義してあげる
+        const w = skeletonMat.cols;
+        const h = skeletonMat.rows;
+
+        // 📍 【修正箇所2】pitchA / pitchB ではなく、正しい変数名 best[0].pitch / best[1].pitch から渡す
+        const rhoStartA = estimateRhoStart(peaksA, best[0].pitch);
+        const rhoStartB = estimateRhoStart(peaksB, best[1].pitch);
 
         // 現在はまだ機械的に引いている段階（Part6のまま維持）
         const idealA = buildIdealLines(
