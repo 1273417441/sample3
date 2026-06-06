@@ -616,32 +616,35 @@ function detectAngles(skeletonMat){
             candidates
         );
 
-    document.getElementById("thetaA").textContent =best[0].theta;
-    document.getElementById("thetaB").textContent =best[1].theta;
-    document.getElementById("pitchA").textContent =best[0].pitch;
-    document.getElementById("pitchB").textContent =best[1].pitch;
+    document.getElementById("thetaA").textContent = best[0].theta;
+    document.getElementById("thetaB").textContent = best[1].theta;
+    document.getElementById("pitchA").textContent = best[0].pitch;
+    document.getElementById("pitchB").textContent = best[1].pitch;
 
-    if (best[0].theta !== "--" && best[0].pitch !== "--") {
-        const idealA =buildIdealLines(
-            thetaA,
-            pitchA,
-            skeleton.cols,
-            skeleton.rows
+    // 📍【修正ポイント】安全に存在チェックをし、正しい変数名（bestやskeletonMat）に修正
+    if (best[0].theta !== "--" && best[0].pitch !== "--" && best[1].theta !== "--") {
+        
+        const idealA = buildIdealLines(
+            best[0].theta,
+            best[0].pitch,
+            skeletonMat.cols,
+            skeletonMat.rows
         );
 
-        const idealB =buildIdealLines(
-            thetaB,
-            pitchB,
-            skeleton.cols,
-            skeleton.rows
+        const idealB = buildIdealLines(
+            best[1].theta,
+            best[1].pitch,
+            skeletonMat.cols,
+            skeletonMat.rows
         );
 
-        const crossPoints =buildCrossPoints(idealA,idealB);
+        const crossPoints = buildCrossPoints(idealA, idealB);
 
         drawGridPoints(
             document.getElementById("gridCanvas"),
             crossPoints
         );
+    } // 👈 📍【修正ポイント】消えていた閉じカッコを追加！
         
     skeletonMat.delete();
 }
