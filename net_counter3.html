@@ -731,16 +731,13 @@ function detectAngles(skeletonMat){
         }
 
         // ========================================================
-        // 🎯 幾何格子逆算・強制補間ロジック（描画部の丸ごと置換）
+        // 🎯 【完全自動版】幾何格子逆算・強制補間ロジック（修正版）
         // ========================================================
-        // ========================================================
-        // 🎯 【完全自動版】幾何格子逆算・強制補間ロジック
-        // ========================================================
-        // 固定値（32や23）を廃止し、上の方の処理で自動計算された結果をそのまま流し込む！
-        const thetaA = bestGrid.thetaA;
-        const thetaB = bestGrid.thetaB;
-        const pitchA = bestGrid.pitchA;
-        const pitchB = bestGrid.pitchB;
+        // 既存のコード内の変数名「best」から、自動計算された角度とピッチを流し込みます
+        const thetaA = best[0].theta;
+        const thetaB = best[1].theta;
+        const pitchA = best[0].pitch;
+        const pitchB = best[1].pitch;
 
         // 1. 基準となる格子の原点を逆算
         const origin = estimateGridOrigin(
@@ -774,10 +771,9 @@ function detectAngles(skeletonMat){
                 const x = origin.x + i * ax + j * bx;
                 const y = origin.y + i * ay + j * by;
 
-                // 新しく追加したマスク判定関数で、Hull（赤枠内）に入っているかチェック
-                // ※もし hullMaskMat という変数名が上の処理と違う場合は、
-                // マスク用のcv.Mat変数名（おそらくマスク処理したMatオブジェクト）に合わせてください
-                if (!pointInHullMask(x, y, hullMaskMat)) {
+                // 🔴【修正ポイント】hullMaskMatの代わりに、既に上できれいに計算されている
+                // 赤枠の多角形データ（hull）を直接使って、内側かどうかを安全に高速判定します！
+                if (!pointInPolygon(x, y, hull)) {
                     continue;
                 }
 
@@ -799,15 +795,21 @@ function detectAngles(skeletonMat){
 
             if (!snapped) continue;
 
-            // 吸着先の輝度をチェック（周囲に全くワイヤの骨組みがない虚無の空間なら描画しない）
-            // ※もし snapped.value が undefined になる場合は、単に「骨組みがあるか」のチェックに変更します
-            if (snapped.value <= 0) continue;
+            // 🔴【修正ポイント】エラーの原因だった「snapped.value <= 0」を廃止
+            // OpenCVのデータ配列から、吸着先の実際の明るさを直接安全に確認します
+            const py = Math.floor(snapped.y);
+            const px = Math.floor(snapped.x);
+            
+            if (px < 0 || px >= skeletonMat.cols || py < 0 || py >= skeletonMat.rows) continue;
+
+            const actualVal = skeletonMat.data[py * skeletonMat.cols + px];
+            if (actualVal <= 0) continue; // 黒い場所（周囲にワイヤが全くない虚無の空間）なら描画しない
 
             ctx.beginPath();
             ctx.arc(
                 snapped.x,
                 snapped.y,
-                2.3, // 目標PNGに近い、シャープで綺麗な小さめのドットサイズ（2.3px）
+                2.3, // 目標PNGに近い、シャープで綺麗な小さめのドットサイズ
                 0,
                 Math.PI * 2
             );
@@ -816,14 +818,12 @@ function detectAngles(skeletonMat){
 
         // 補助関数：直線上の点かどうかを判定する
         function isLinearConnection(p, pointMap) {
-            // 水平または垂直に点が存在するかをチェック
             const horz = pointMap.has(`${p.i+1},${p.j}`) && pointMap.has(`${p.i-1},${p.j}`);
             const vert = pointMap.has(`${p.i},${p.j+1}`) && pointMap.has(`${p.i},${p.j-1}`);
-            // 両方（十字）なら結び目だが、片方だけなら線上の点
             return (horz && !vert) || (!horz && vert);
         }
 
-    } // ➔ if (bestGrid.score > 0) の終わり
+    } // ➔ if (best[0].theta !== "--" ... ) の終わり
     
     skeletonMat.delete();
 }
