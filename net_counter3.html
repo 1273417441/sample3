@@ -1688,6 +1688,32 @@ function knotScore(p, pointMap) {
     }
     return score;
 }
+
+function findLocalMaxBrightness(x, y, mat) {
+    let bestX = x;
+    let bestY = y;
+    let maxVal = -1;
+    const range = 5; // 探す範囲（中心から±5ピクセル）
+
+    for (let dy = -range; dy <= range; dy++) {
+        for (let dx = -range; dx <= range; dx++) {
+            const px = Math.floor(x + dx);
+            const py = Math.floor(y + dy);
+            
+            // 範囲外チェック
+            if (px < 0 || px >= mat.cols || py < 0 || py >= mat.rows) continue;
+
+            // mat.ucharAt(y, x) は OpenCV.js のアクセス例です
+            const val = mat.ucharAt(py, px); 
+            if (val > maxVal) {
+                maxVal = val;
+                bestX = px;
+                bestY = py;
+            }
+        }
+    }
+    return { x: bestX, y: bestY };
+}
     
 </script>
 
