@@ -731,22 +731,26 @@ function detectAngles(skeletonMat){
         }
 
         // ========================================================
-        // 🎯 究極のシンプル版：規則格子を信じるセル代表点選別
+        // 🎯 修正版：格子を信じつつ、実際の結び目（生存フラグ）だけを残す
         // ========================================================
         const cellMap = new Map();
 
         for (const p of crossPoints) {
-            // 1. 最低限の枠内判定と、網のルール（千鳥配置）だけを残す
+            // 1. 範囲判定
             if (!pointInPolygon(p.x, p.y, hull)) continue;
-            if (((p.i + p.j) & 1) !== 0) continue; // 千鳥配置チェック
             
+            // 2. 【重要】幾何学的な網のルール（千鳥配置）
+            if (((p.i + p.j) & 1) !== 0) continue; 
+            
+            // 3. 🔴【ここを復活！】実際に画像上に結び目候補があった点（生存点）のみに絞る
+            if (!p.isSurvived) continue;
+
             const cellKey = `${p.i},${p.j}`;
             
-            // 2. スコアはシンプルに「knotScore」をメインにする
-            // wireScoreなどの細かい計算は一切排除
+            // スコアはシンプルに周辺の繋がり度合い（knotScore）を採用
             const currentScore = p.knotScore; 
 
-            // セル内で一番マシな（knotScoreが高い）候補を1つだけ選ぶ
+            // セル内で最も信頼できる候補を1つだけ選ぶ
             if (!cellMap.has(cellKey) || currentScore > cellMap.get(cellKey).score) {
                 cellMap.set(cellKey, {
                     score: currentScore,
@@ -758,9 +762,9 @@ function detectAngles(skeletonMat){
             }
         }
 
-        // B. 選ばれた1セル1点の代表点を描画する（画像への補正は10%だけ）
+        // B. 選ばれた「1セル1点」の代表点を描画する
         for (const data of cellMap.values()) {
-            // 最後にほんの少しだけ実際のワイヤに吸着（画像補正10%）
+            // 最後に実際のワイヤに少し吸着させる
             const snapped = findLocalMaxBrightness(data.x, data.y, skeletonMat);
             
             ctx.fillStyle = "#FFD400";
