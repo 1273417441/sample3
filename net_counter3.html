@@ -731,26 +731,26 @@ function detectAngles(skeletonMat){
         }
 
         // ========================================================
-        // 🎯 修正版：格子を信じつつ、実際の結び目（生存フラグ）だけを残す
+        // 🎯 最終完成版：1セル1点 ＆ 緩めた生存フラグによる選別
         // ========================================================
         const cellMap = new Map();
 
         for (const p of crossPoints) {
-            // 1. 範囲判定
+            // 1. 赤枠（Hull）の外は除外
             if (!pointInPolygon(p.x, p.y, hull)) continue;
             
-            // 2. 【重要】幾何学的な網のルール（千鳥配置）
+            // 2. 網の構造ルール（千鳥配置）に合わないセルは除外
             if (((p.i + p.j) & 1) !== 0) continue; 
             
-            // 3. 🔴【ここを復活！】実際に画像上に結び目候補があった点（生存点）のみに絞る
+            // 3. ステップ1で救済した「生存フラグ」が立っているものだけを対象にする
             if (!p.isSurvived) continue;
 
             const cellKey = `${p.i},${p.j}`;
             
-            // スコアはシンプルに周辺の繋がり度合い（knotScore）を採用
+            // スコアはシンプルに、その点周辺のスケルトン密度（knotScore）の高さで勝負
             const currentScore = p.knotScore; 
 
-            // セル内で最も信頼できる候補を1つだけ選ぶ
+            // 同じセル(マス)の中で、一番密度の高い（中央に近い）代表候補を1つだけ選出
             if (!cellMap.has(cellKey) || currentScore > cellMap.get(cellKey).score) {
                 cellMap.set(cellKey, {
                     score: currentScore,
@@ -762,9 +762,9 @@ function detectAngles(skeletonMat){
             }
         }
 
-        // B. 選ばれた「1セル1点」の代表点を描画する
+        // B. 選び抜かれた「各マスに1点」の代表点のみを美しく描画
         for (const data of cellMap.values()) {
-            // 最後に実際のワイヤに少し吸着させる
+            // 最後に「物理的なワイヤの中心」へピタッと吸着（画像補正10%）
             const snapped = findLocalMaxBrightness(data.x, data.y, skeletonMat);
             
             ctx.fillStyle = "#FFD400";
@@ -1523,7 +1523,7 @@ function isRealJunction(x,y,skeletonMat)
         skeletonMat
     );
 
-    return score >= 5;
+    return score >= 3;
 }
 
 function backgroundScore(x,y,skeletonMat)
