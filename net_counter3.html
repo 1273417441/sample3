@@ -731,9 +731,8 @@ function detectAngles(skeletonMat){
         }
 
         // ========================================================
-        // 🎯 【完全自動版】幾何格子逆算・強制補間ロジック（修正版）
+        // 🎯 【完全自動版】幾何格子逆算・強制補間ロジック（位置ズレ修正版）
         // ========================================================
-        // 既存のコード内の変数名「best」から、自動計算された角度とピッチを流し込みます
         const thetaA = best[0].theta;
         const thetaB = best[1].theta;
         const pitchA = best[0].pitch;
@@ -747,32 +746,35 @@ function detectAngles(skeletonMat){
             pitchA
         );
 
-        console.log("Grid Origin", origin);
+        console.log("Grid Origin:", origin);
 
         const radA = thetaA * Math.PI / 180;
         const radB = thetaB * Math.PI / 180;
 
+        // 1マス進むときのX, Yの移動量（ベクトル）
         const ax = Math.cos(radA) * pitchA;
         const ay = Math.sin(radA) * pitchA;
-
         const bx = Math.cos(radB) * pitchB;
         const by = Math.sin(radB) * pitchB;
 
         const theoreticalPoints = [];
-        const range = 150; // 画像全体をカバーするループ範囲
 
-        // 2. 数式に基づいて、理論上のきれいな格子点をすべて生成（100%自動補間）
-        for (let i = -range; i <= range; i++) {
-            for (let j = -range; j <= range; j++) {
+        // 🌟 画像全体をカバーできるように、縦横の探索ステップ数を調整します
+        // ピッチが約23pxなので、画面サイズ（例えば1000px）をカバーするために-50〜50ステップほど回します
+        const stepRange = 60; 
+
+        // 2. 数式に基づいて、画面全体に理論上のきれいな格子点をすべて生成
+        for (let i = -stepRange; i <= stepRange; i++) {
+            for (let j = -stepRange; j <= stepRange; j++) {
                 
-                // 千鳥配置チェック（現在の網のルールに合わせて、奇数・偶数の判定）
+                // 千鳥配置チェック（網のルール：奇数・偶数の判定）
                 if (((i + j) & 1) === 0) continue;
 
+                // 🌟 正しい幾何学座標の計算（原点からベクトルを加算）
                 const x = origin.x + i * ax + j * bx;
                 const y = origin.y + i * ay + j * by;
 
-                // 🔴【修正ポイント】hullMaskMatの代わりに、既に上できれいに計算されている
-                // 赤枠の多角形データ（hull）を直接使って、内側かどうかを安全に高速判定します！
+                // 赤枠の多角形データ（hull）の内側かどうかをチェック
                 if (!pointInPolygon(x, y, hull)) {
                     continue;
                 }
@@ -780,6 +782,8 @@ function detectAngles(skeletonMat){
                 theoreticalPoints.push({ x, y, i, j });
             }
         }
+
+        console.log("生成された理論上の点数:", theoreticalPoints.length);
 
         // 3. 最終吸着と描画
         ctx.fillStyle = "#FFD400";
@@ -795,21 +799,20 @@ function detectAngles(skeletonMat){
 
             if (!snapped) continue;
 
-            // 🔴【修正ポイント】エラーの原因だった「snapped.value <= 0」を廃止
-            // OpenCVのデータ配列から、吸着先の実際の明るさを直接安全に確認します
+            // OpenCVのデータ配列から、吸着先の実際の明るさを直接確認
             const py = Math.floor(snapped.y);
             const px = Math.floor(snapped.x);
             
             if (px < 0 || px >= skeletonMat.cols || py < 0 || py >= skeletonMat.rows) continue;
 
             const actualVal = skeletonMat.data[py * skeletonMat.cols + px];
-            if (actualVal <= 0) continue; // 黒い場所（周囲にワイヤが全くない虚無の空間）なら描画しない
+            if (actualVal <= 0) continue; // 黒い場所（周囲にワイヤがない虚無の空間）なら描画しない
 
             ctx.beginPath();
             ctx.arc(
                 snapped.x,
                 snapped.y,
-                2.3, // 目標PNGに近い、シャープで綺麗な小さめのドットサイズ
+                5, // 目標PNGに近い小さめでシャープなドット
                 0,
                 Math.PI * 2
             );
