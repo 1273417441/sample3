@@ -731,45 +731,82 @@ function detectAngles(skeletonMat){
         }
 
         // ========================================================
-        // 🎯 最終完成版：1セル1点 ＆ 緩めた生存フラグによる選別
+        // 🎯 幾何格子逆算・強制補間ロジック（描画部の丸ごと置換）
         // ========================================================
-        const cellMap = new Map();
+        const thetaA = 32;
+        const thetaB = 148;
+        const pitchA = 23;
+        const pitchB = 23;
 
-        for (const p of crossPoints) {
-            // 1. 赤枠（Hull）の外は除外
-            if (!pointInPolygon(p.x, p.y, hull)) continue;
-            
-            // 2. 網の構造ルール（千鳥配置）に合わないセルは除外
-            if (((p.i + p.j) & 1) !== 0) continue; 
-            
-            // 3. ステップ1で救済した「生存フラグ」が立っているものだけを対象にする
-            if (!p.isSurvived) continue;
+        // 1. 基準となる格子の原点を逆算
+        const origin = estimateGridOrigin(
+            crossPoints,
+            thetaA,
+            thetaB,
+            pitchA
+        );
 
-            const cellKey = `${p.i},${p.j}`;
-            
-            // スコアはシンプルに、その点周辺のスケルトン密度（knotScore）の高さで勝負
-            const currentScore = p.knotScore; 
+        console.log("Grid Origin", origin);
 
-            // 同じセル(マス)の中で、一番密度の高い（中央に近い）代表候補を1つだけ選出
-            if (!cellMap.has(cellKey) || currentScore > cellMap.get(cellKey).score) {
-                cellMap.set(cellKey, {
-                    score: currentScore,
-                    x: p.x,
-                    y: p.y,
-                    i: p.i,
-                    j: p.j
-                });
+        const radA = thetaA * Math.PI / 180;
+        const radB = thetaB * Math.PI / 180;
+
+        const ax = Math.cos(radA) * pitchA;
+        const ay = Math.sin(radA) * pitchA;
+
+        const bx = Math.cos(radB) * pitchB;
+        const by = Math.sin(radB) * pitchB;
+
+        const theoreticalPoints = [];
+        const range = 150; // 画像全体をカバーするループ範囲
+
+        // 2. 数式に基づいて、理論上のきれいな格子点をすべて生成（100%自動補間）
+        for (let i = -range; i <= range; i++) {
+            for (let j = -range; j <= range; j++) {
+                
+                // 千鳥配置チェック（現在の網のルールに合わせて、奇数・偶数の判定）
+                if (((i + j) & 1) === 0) continue;
+
+                const x = origin.x + i * ax + j * bx;
+                const y = origin.y + i * ay + j * by;
+
+                // 新しく追加したマスク判定関数で、Hull（赤枠内）に入っているかチェック
+                // ※もし hullMaskMat という変数名が上の処理と違う場合は、
+                // マスク用のcv.Mat変数名（おそらくマスク処理したMatオブジェクト）に合わせてください
+                if (!pointInHullMask(x, y, hullMaskMat)) {
+                    continue;
+                }
+
+                theoreticalPoints.push({ x, y, i, j });
             }
         }
 
-        // B. 選び抜かれた「各マスに1点」の代表点のみを美しく描画
-        for (const data of cellMap.values()) {
-            // 最後に「物理的なワイヤの中心」へピタッと吸着（画像補正10%）
-            const snapped = findLocalMaxBrightness(data.x, data.y, skeletonMat);
-            
-            ctx.fillStyle = "#FFD400";
+        // 3. 最終吸着と描画
+        ctx.fillStyle = "#FFD400";
+
+        for (const p of theoreticalPoints) {
+            // 理論上の点を、周辺5pxの範囲で実際のワイヤ中心へ吸着させる
+            const snapped = findLocalMaxBrightness(
+                p.x,
+                p.y,
+                skeletonMat,
+                5
+            );
+
+            if (!snapped) continue;
+
+            // 吸着先の輝度をチェック（周囲に全くワイヤの骨組みがない虚無の空間なら描画しない）
+            // ※もし snapped.value が undefined になる場合は、単に「骨組みがあるか」のチェックに変更します
+            if (snapped.value <= 0) continue;
+
             ctx.beginPath();
-            ctx.arc(snapped.x, snapped.y, 6, 0, Math.PI * 2);
+            ctx.arc(
+                snapped.x,
+                snapped.y,
+                2.3, // 目標PNGに近い、シャープで綺麗な小さめのドットサイズ（2.3px）
+                0,
+                Math.PI * 2
+            );
             ctx.fill();
         }
 
@@ -1790,6 +1827,77 @@ function evaluateJunction(x, y, mat) {
     }
 
     return degreeScore + angleSpreadScore; // これが junctionScore になる
+}
+
+function estimateGridOrigin(points, thetaA, thetaB, pitch) {
+
+    const radA = thetaA * Math.PI / 180;
+    const radB = thetaB * Math.PI / 180;
+
+    const ax = Math.cos(radA) * pitch;
+    const ay = Math.sin(radA) * pitch;
+
+    const bx = Math.cos(radB) * pitch;
+    const by = Math.sin(radB) * pitch;
+
+    let sx = 0;
+    let sy = 0;
+    let count = 0;
+
+    const trusted = points
+        .filter(p => p.isSurvived && (p.knotScore || 0) >= 4)
+        .slice(0, 200);
+
+    for (const p of trusted) {
+
+        const det = ax * by - ay * bx;
+        if (Math.abs(det) < 1e-6) continue;
+
+        const i =
+            ( p.x * by - p.y * bx ) / det;
+
+        const j =
+            (-p.x * ay + p.y * ax ) / det;
+
+        const ir = Math.round(i);
+        const jr = Math.round(j);
+
+        const gx =
+            p.x - ir * ax - jr * bx;
+
+        const gy =
+            p.y - ir * ay - jr * by;
+
+        sx += gx;
+        sy += gy;
+        count++;
+    }
+
+    if (count === 0) {
+        return { x: 0, y: 0 };
+    }
+
+    return {
+        x: sx / count,
+        y: sy / count
+    };
+}
+
+function pointInHullMask(x, y, hullMaskMat) {
+
+    x = Math.round(x);
+    y = Math.round(y);
+
+    if (
+        x < 0 ||
+        y < 0 ||
+        x >= hullMaskMat.cols ||
+        y >= hullMaskMat.rows
+    ) {
+        return false;
+    }
+
+    return hullMaskMat.ucharPtr(y, x)[0] > 0;
 }
     
 </script>
