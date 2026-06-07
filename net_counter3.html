@@ -739,7 +739,7 @@ function detectAngles(skeletonMat){
             if (p.wireScore < 20) continue;
     
             // 2. 「接続密度（knotScore）」は「5」で固定
-            if (p.knotScore < 7) continue;
+            if (p.knotScore < 8) continue;
     
             // 3. 【重要】線上のノイズを消す「千鳥配置の調整」
             // 今の画像を見る限り、点が出すぎている場所は「千鳥の逆位相」かもしれません。
