@@ -735,7 +735,7 @@ function detectAngles(skeletonMat){
             if (!pointInPolygon(p.x, p.y, hull)) continue;
             
             if (p.wireScore < 15) continue;
-            if (p.knotScore < 5) continue;
+            if (p.knotScore < 4) continue;
             if (((p.i + p.j) & 1) !== 0) continue;
 
             ctx.fillStyle = "#FFD400";
