@@ -730,30 +730,38 @@ function detectAngles(skeletonMat){
             p.knotScore = knotScore(p, pointMap);
         }
 
-        // ④ 描画ループ：結び目だけを射抜くための最終フィルタ
+        // ④ 描画ループ内の判定に追加
         for (const p of crossPoints) {
-        
             if (!pointInPolygon(p.x, p.y, hull)) continue;
-    
-            // 1. まずは「ワイヤの密度」で大きく選別
             if (p.wireScore < 20) continue;
-    
-            // 2. 「接続密度（knotScore）」は「5」で固定
             if (p.knotScore < 8) continue;
-    
-            // 3. 【重要】線上のノイズを消す「千鳥配置の調整」
-            // 今の画像を見る限り、点が出すぎている場所は「千鳥の逆位相」かもしれません。
-            // 「(p.i + p.j) & 1」が「0」の場所だけを通すのが標準ですが、
-            // もしそれでも点が出るなら、ここを「1」に固定するか、
-            // あるいは「p.i % 2 === 0 && p.j % 2 === 0」のように「偶数格子点のみ」に絞るのが最も効果的です。
         
-            if (p.i % 2 !== 0 || p.j % 2 !== 0) continue; // 偶数座標の交点だけに絞る！
-    
-            // 🟡 最終条件をクリアした点だけを描画
+            // 🚀 ここで「結び目」としての形状を再評価する
+            // 「周囲8近傍のすべてに接続があるか」あるいは「特定の方向の接続だけか」を見る
+            // 結び目は「十字（4方向）」だが、線上の点は「2方向」のみであることに注目します
+            
+            // 改良版 knotScore ロジックを少し強化
+            // もし周囲の点が「直線状」に並んでいるなら、それは結び目ではないと判断
+            const isLine = isLinearConnection(p, pointMap); 
+            if (isLine) continue; // 直線的ならスキップ！
+        
+            // 千鳥配置
+            if (((p.i + p.j) & 1) !== 0) continue;
+        
+            // 🟡 描画
             ctx.fillStyle = "#FFD400";
             ctx.beginPath();
-            ctx.arc(p.x, p.y, 6, 0, Math.PI * 2); // 少しだけ大きくして強調
+            ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
             ctx.fill();
+        }
+
+        // 補助関数：直線上の点かどうかを判定する
+        function isLinearConnection(p, pointMap) {
+            // 水平または垂直に点が存在するかをチェック
+            const horz = pointMap.has(`${p.i+1},${p.j}`) && pointMap.has(`${p.i-1},${p.j}`);
+            const vert = pointMap.has(`${p.i},${p.j+1}`) && pointMap.has(`${p.i},${p.j-1}`);
+            // 両方（十字）なら結び目だが、片方だけなら線上の点
+            return (horz && !vert) || (!horz && vert);
         }
 
     } // ➔ if (bestGrid.score > 0) の終わり
