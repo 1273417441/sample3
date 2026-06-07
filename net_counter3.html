@@ -728,6 +728,8 @@ function detectAngles(skeletonMat){
             p.knotScore = knotScore(p, pointMap);
         }
 
+        console.log("総点数:", crossPoints.length);
+        
         // ④ 描画ループ：3段構えのフィルタリング
         for (const p of crossPoints) {
             
@@ -735,10 +737,10 @@ function detectAngles(skeletonMat){
             if (!pointInPolygon(p.x, p.y, hull)) continue;
 
             // wireScore（ワイヤの存在量）
-            if (p.wireScore < 15) continue;
+            if (p.wireScore < 10) continue;
 
             // knotScore（格子整合性）
-            if (p.knotScore < 4) continue;
+            if (p.knotScore < 3) continue;
 
             // 千鳥配置（位相：もしドット位置がズレていたらこの「1」を「0」に変える）
             if (((p.i + p.j) & 1) !== 0) continue;
