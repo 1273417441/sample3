@@ -730,25 +730,23 @@ function detectAngles(skeletonMat){
             p.knotScore = knotScore(p, pointMap);
         }
 
-        // ④ 描画ループ内の判定に追加
+        // ④ 描画ループ（フィルタ条件をクリアした点だけがここに来る）
         for (const p of crossPoints) {
+    
+            // 1. フィルタリング（ここは今のまま）
             if (!pointInPolygon(p.x, p.y, hull)) continue;
             if (p.wireScore < 20) continue;
             if (p.knotScore < 8) continue;
-        
-            // 🚀 ここで「結び目」としての形状を再評価する
-            // 「周囲8近傍のすべてに接続があるか」あるいは「特定の方向の接続だけか」を見る
-            // 結び目は「十字（4方向）」だが、線上の点は「2方向」のみであることに注目します
-            
-            // 改良版 knotScore ロジックを少し強化
-            // もし周囲の点が「直線状」に並んでいるなら、それは結び目ではないと判断
-            const isLine = isLinearConnection(p, pointMap); 
-            if (isLine) continue; // 直線的ならスキップ！
-        
-            // 千鳥配置
+            if (isLinearConnection(p, pointMap)) continue;
             if (((p.i + p.j) & 1) !== 0) continue;
         
-            // 🟡 描画
+            // 2. 🌟【ここに追加】座標の微調整（磁石のように吸着させる）
+            // p.x, p.y を中心に、周辺の「ワイヤの濃さ」が最大になる位置へ移動させる
+            const snappedPos = findLocalMaxBrightness(p.x, p.y, skeletonMat);
+            p.x = snappedPos.x;
+            p.y = snappedPos.y;
+
+            // 3. 🟡 描画
             ctx.fillStyle = "#FFD400";
             ctx.beginPath();
             ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
