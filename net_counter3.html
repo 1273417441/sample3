@@ -730,17 +730,29 @@ function detectAngles(skeletonMat){
             p.knotScore = knotScore(p, pointMap);
         }
 
+        // ④ 描画ループ：結び目だけを射抜くための最終フィルタ
         for (const p of crossPoints) {
-            // ここで hull を使う（定義済みなのでエラーにならない）
+        
             if (!pointInPolygon(p.x, p.y, hull)) continue;
-            
+    
+            // 1. まずは「ワイヤの密度」で大きく選別
             if (p.wireScore < 20) continue;
-            if (p.knotScore < 6) continue;
-            if (((p.i + p.j) & 1) !== 0) continue;
-
+    
+            // 2. 「接続密度（knotScore）」は「5」で固定
+            if (p.knotScore < 5) continue;
+    
+            // 3. 【重要】線上のノイズを消す「千鳥配置の調整」
+            // 今の画像を見る限り、点が出すぎている場所は「千鳥の逆位相」かもしれません。
+            // 「(p.i + p.j) & 1」が「0」の場所だけを通すのが標準ですが、
+            // もしそれでも点が出るなら、ここを「1」に固定するか、
+            // あるいは「p.i % 2 === 0 && p.j % 2 === 0」のように「偶数格子点のみ」に絞るのが最も効果的です。
+        
+            if (p.i % 2 !== 0 || p.j % 2 !== 0) continue; // 偶数座標の交点だけに絞る！
+    
+            // 🟡 最終条件をクリアした点だけを描画
             ctx.fillStyle = "#FFD400";
             ctx.beginPath();
-            ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+            ctx.arc(p.x, p.y, 6, 0, Math.PI * 2); // 少しだけ大きくして強調
             ctx.fill();
         }
 
