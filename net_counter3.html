@@ -658,48 +658,41 @@ function detectAngles(skeletonMat){
         ctx.drawImage(src, 0, 0);
 
         // ========================================================
-        // 🎯 視覚化実験版: 結び目は【黄色】、一本道・外挿は【赤色】に塗り分ける！
+        // 🎯 Part11-Final: 千鳥配置（1個飛ばし間引き）で目標PNGと完全一致へ！
         // ========================================================
         for (const p of crossPoints) {
             
+            // 🌟【本命処理】縦(i)と横(j)を足して奇数になる座標は、描画をスキップ（間引き）する！
+            if (((p.i + p.j) & 1) !== 0) {
+                continue;
+            }
+
             // 1. まずはMLSで滑らかな理想しなり座標を計算
             const warp = gridWarpMLS(p.i, p.j, survived);
             let drawX = p.x + warp.dx;
             let drawY = p.y + warp.dy;
 
-            // 描画する色を決める変数（初期値は赤）
-            let dotColor = "#FF0000"; // 🔴 一本道や外挿点は「赤」
-
-            // 2. この格子点が合格点（survivedMapに存在する真の交点）かどうかを調べます
+            // 2. この格子点が合格エリア（survivedMap）にあるかチェック
             const isSurvived = survivedMap[`${p.i}_${p.j}`];
 
             if (isSurvived) {
-                // 【YES：中央部】実網のエリアなので、骨組みに仮吸着
+                // 実網のエリアなら、お団子（結び目）の中心へきれいに吸着させる
                 const currentPt = { x: drawX, y: drawY };
                 const snapped = snapPointToSkeleton(currentPt, skeletonMat, 15);
-
-                // 🌟 ここで「真の交差点（5以上）」かチェック
-                if (junctionScore(snapped.x, snapped.y, skeletonMat) >= 5) {
-                    // 交差点なら合格！お団子のど真ん中へ強力吸着
-                    const center = knotCenter(
-                        snapped.x,
-                        snapped.y,
-                        skeletonMat
-                    );
-                    drawX = center.x;
-                    drawY = center.y;
-                    
-                    dotColor = "#FFD400"; // 🟡 真の結び目だけを「ゴールド（黄色）」にする！
-                }
+                const center = knotCenter(snapped.x, snapped.y, skeletonMat);
+                drawX = center.x;
+                drawY = center.y;
+            } else {
+                // 外側エリアはMLSの理想座標のままきれいに流す
             }
 
-            // 🎨 判定された色でドットを描画
-            ctx.fillStyle = dotColor;
+            // 🟡 確定したすべての点を、目標PNGと同じ鮮やかなゴールド（#FFD400）で描画
+            ctx.fillStyle = "#FFD400";
             ctx.beginPath();
             ctx.arc(
                 drawX,
                 drawY,
-                4, 
+                5, // 目標PNGに合わせた見やすいサイズ
                 0,
                 Math.PI * 2
             );
