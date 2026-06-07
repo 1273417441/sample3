@@ -649,7 +649,9 @@ function detectAngles(skeletonMat){
         const scoredPoints = scoreGridPoints(realJunctionPoints, skeletonMat);
         const { survived, rejected, survivedMap } = snapGridPoints(scoredPoints, skeletonMat);
 
-        // 🌟 すべての格子点に MLS計算 と isSurvivedフラグ を持たせて最終リストを作る
+        // ========================================================
+        // 🎯 新方針ステップ1: 生成側で isJunction フラグを持たせる！
+        // ========================================================
         const crossPoints = [];
         for (const p of crossPointsRaw) {
             const warp = gridWarpMLS(p.i, p.j, survived);
@@ -658,22 +660,30 @@ function detectAngles(skeletonMat){
 
             const isSurvivedFlag = !!survivedMap[`${p.i}_${p.j}`];
 
-            // 実網エリアならお団子（結び目）の中心へ強力吸着
-            if (isSurvivedFlag) {
-                const currentPt = { x: finalX, y: finalY };
-                const snapped = snapPointToSkeleton(currentPt, skeletonMat, 15);
+            // 🌟 【ChatGPTの指示】まずは骨組みに仮吸着させてみて、junctionScoreを計算する
+            const currentPt = { x: finalX, y: finalY };
+            const snapped = snapPointToSkeleton(currentPt, skeletonMat, 15);
+            const score = junctionScore(snapped.x, snapped.y, skeletonMat);
+
+            // 基準（5以上）をクリアした本物の結び目だけ、お団子の中心に強力吸着させる
+            const isJunctionFlag = (score >= 5);
+            if (isSurvivedFlag && isJunctionFlag) {
                 const center = knotCenter(snapped.x, snapped.y, skeletonMat);
                 finalX = center.x;
                 finalY = center.y;
+            } else {
+                // ➔ 基準に届かなかった場所（歯抜けの場所）は、
+                // 消さずにMLSの計算した綺麗な理想座標（finalX, finalY）のままキープ！
             }
 
-            // ChatGPTの指定通り、5つのデータをすべて詰め込んで登録！
+            // ChatGPTの指定通り、新フラグ「isJunction」を追加して登録！
             crossPoints.push({
                 x: finalX,
                 y: finalY,
                 i: p.i,
                 j: p.j,
-                isSurvived: isSurvivedFlag
+                isSurvived: isSurvivedFlag,
+                isJunction: isJunctionFlag // 🌟 新しく追加
             });
         }
 
@@ -687,21 +697,24 @@ function detectAngles(skeletonMat){
         ctx.drawImage(src, 0, 0);
 
         // ========================================================
-        // 🎯 Part11-Final(2): 描画ループをChatGPT指定のコードへ置換！
+        // 🎯 新方針ステップ2: 描画ループを新ロジック（自動補間版）へ置換！
         // ========================================================
         for (const p of crossPoints) {
             
-            // 🌟【助言通り】本物の網の上（isSurvivedがtrue）だけを描画。外側はパス！
-            if (!p.isSurvived) {
-                continue;
-            }
-
             // 🌟 千鳥配置（1個飛ばし間引き）
             if (((p.i + p.j) & 1) !== 0) {
                 continue;
             }
 
-            // 🟡 ゴールド（#FFD400）で、美しい結び目だけを描画
+            // 🌟 【ChatGPTの指示】完全な画面外（上下左右の端10px）だけを除外する
+            if (p.x < 10 ||
+                p.x > canvas.width - 10 ||
+                p.y < 10 ||
+                p.y > canvas.height - 10) {
+                continue;
+            }
+
+            // 🟡 確定したすべての点を、目標PNGと同じゴールド（#FFD400）で描画
             ctx.fillStyle = "#FFD400";
             ctx.beginPath();
             ctx.arc(
@@ -1455,7 +1468,7 @@ function isRealJunction(x,y,skeletonMat)
         skeletonMat
     );
 
-    return score >= 6;
+    return score >= 5;
 }
     
 </script>
