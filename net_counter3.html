@@ -650,7 +650,7 @@ function detectAngles(skeletonMat){
         const { survived, rejected, survivedMap } = snapGridPoints(scoredPoints, skeletonMat);
 
         // ========================================================
-        // 🎯 新方針ステップ1: 生成側で isJunction フラグを持たせる！
+        // 🎯 最終仕上げステップ1: 生成側で新フラグ「bg」をしっかり記憶！
         // ========================================================
         const crossPoints = [];
         for (const p of crossPointsRaw) {
@@ -660,30 +660,33 @@ function detectAngles(skeletonMat){
 
             const isSurvivedFlag = !!survivedMap[`${p.i}_${p.j}`];
 
-            // 🌟 【ChatGPTの指示】まずは骨組みに仮吸着させてみて、junctionScoreを計算する
+            // 骨組みに仮吸着させて、各種スコアを計算
             const currentPt = { x: finalX, y: finalY };
             const snapped = snapPointToSkeleton(currentPt, skeletonMat, 15);
+            
             const score = junctionScore(snapped.x, snapped.y, skeletonMat);
+            
+            // 🌟【ChatGPTの指示】完全背景を判定する新しいスコアを計測！
+            const bgScore = backgroundScore(snapped.x, snapped.y, skeletonMat);
 
-            // 基準（5以上）をクリアした本物の結び目だけ、お団子の中心に強力吸着させる
+            // junctionScoreは「削除判定」から「吸着品質フラグ」へ降格！
+            // 5以上なら中心へ吸着。届かなくてもMLSの理想座標のまま「その場に残す（補間）」
             const isJunctionFlag = (score >= 5);
             if (isSurvivedFlag && isJunctionFlag) {
                 const center = knotCenter(snapped.x, snapped.y, skeletonMat);
                 finalX = center.x;
                 finalY = center.y;
-            } else {
-                // ➔ 基準に届かなかった場所（歯抜けの場所）は、
-                // 消さずにMLSの計算した綺麗な理想座標（finalX, finalY）のままキープ！
             }
 
-            // ChatGPTの指定通り、新フラグ「isJunction」を追加して登録！
+            // ChatGPTの指定通り、データに「bg」を追加して登録！
             crossPoints.push({
                 x: finalX,
                 y: finalY,
                 i: p.i,
                 j: p.j,
                 isSurvived: isSurvivedFlag,
-                isJunction: isJunctionFlag // 🌟 新しく追加
+                isJunction: isJunctionFlag,
+                bg: bgScore // 🌟 新しく追加
             });
         }
 
@@ -697,7 +700,7 @@ function detectAngles(skeletonMat){
         ctx.drawImage(src, 0, 0);
 
         // ========================================================
-        // 🎯 新方針ステップ2: 描画ループを新ロジック（自動補間版）へ置換！
+        // 🎯 最終仕上げステップ2: 描画ループを「完全背景除外ルール」へ置換！
         // ========================================================
         for (const p of crossPoints) {
             
@@ -706,15 +709,12 @@ function detectAngles(skeletonMat){
                 continue;
             }
 
-            // 🌟 【ChatGPTの指示】完全な画面外（上下左右の端10px）だけを除外する
-            if (p.x < 10 ||
-                p.x > canvas.width - 10 ||
-                p.y < 10 ||
-                p.y > canvas.height - 10) {
+            // 🌟【ChatGPTの指示】完全背景（スコアが8未満）なら、描画せずにスキップして消す！
+            if (p.bg < 8) {
                 continue;
             }
 
-            // 🟡 確定したすべての点を、目標PNGと同じゴールド（#FFD400）で描画
+            // 🟡 目標PNGと同じゴールド（#FFD400）で、完璧に補間された点を出力
             ctx.fillStyle = "#FFD400";
             ctx.beginPath();
             ctx.arc(
@@ -1469,6 +1469,35 @@ function isRealJunction(x,y,skeletonMat)
     );
 
     return score >= 5;
+}
+
+function backgroundScore(x,y,skeletonMat)
+{
+    let count = 0;
+    const r = 14;
+
+    for(let dy=-r;dy<=r;dy++)
+    {
+        for(let dx=-r;dx<=r;dx++)
+        {
+            const xx = Math.round(x+dx);
+            const yy = Math.round(y+dy);
+
+            if(xx<0||yy<0||
+               xx>=skeletonMat.cols||
+               yy>=skeletonMat.rows)
+                continue;
+
+            if(
+                skeletonMat.ucharPtr(yy,xx)[0] > 0
+            )
+            {
+                count++;
+            }
+        }
+    }
+
+    return count;
 }
     
 </script>
