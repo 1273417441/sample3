@@ -738,7 +738,7 @@ function detectAngles(skeletonMat){
             if (p.wireScore < 15) continue;
 
             // knotScore（格子整合性）
-            if (p.knotScore < 5) continue;
+            if (p.knotScore < 4) continue;
 
             // 千鳥配置（位相：もしドット位置がズレていたらこの「1」を「0」に変える）
             if (((p.i + p.j) & 1) !== 0) continue;
