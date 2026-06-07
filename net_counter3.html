@@ -730,26 +730,47 @@ function detectAngles(skeletonMat){
             p.knotScore = knotScore(p, pointMap);
         }
 
-        // ④ 描画ループ（フィルタ条件をクリアした点だけがここに来る）
+        // ④ 描画ループの前に「重複排除用リスト」を作る
+        const finalPoints = [];
+        
+        // 1. まず全点をフィルタリングして候補に入れる
         for (const p of crossPoints) {
-    
-            // 1. フィルタリング（ここは今のまま）
             if (!pointInPolygon(p.x, p.y, hull)) continue;
             if (p.wireScore < 20) continue;
             if (p.knotScore < 8) continue;
             if (isLinearConnection(p, pointMap)) continue;
             if (((p.i + p.j) & 1) !== 0) continue;
         
-            // 2. 🌟【ここに追加】座標の微調整（磁石のように吸着させる）
-            // p.x, p.y を中心に、周辺の「ワイヤの濃さ」が最大になる位置へ移動させる
+            finalPoints.push(p);
+        }
+        
+        // 2. 近くに点がある場合、片方を消す（重複排除）
+        const results = [];
+        const thresholdDist = 15; // ここを調整：結び目同士の最小距離（ピクセル）
+        
+        for (let i = 0; i < finalPoints.length; i++) {
+            let isDuplicate = false;
+            for (let j = 0; j < results.length; j++) {
+                const dx = finalPoints[i].x - results[j].x;
+                const dy = finalPoints[i].y - results[j].y;
+                if (Math.sqrt(dx*dx + dy*dy) < thresholdDist) {
+                    isDuplicate = true;
+                    break;
+                }
+            }
+            if (!isDuplicate) {
+                results.push(finalPoints[i]);
+            }
+        }
+        
+        // 3. 重複がない状態の results だけを描画する
+        for (const p of results) {
+            // 吸着処理（先ほどの磁石ロジック）
             const snappedPos = findLocalMaxBrightness(p.x, p.y, skeletonMat);
-            p.x = snappedPos.x;
-            p.y = snappedPos.y;
-
-            // 3. 🟡 描画
+            
             ctx.fillStyle = "#FFD400";
             ctx.beginPath();
-            ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+            ctx.arc(snappedPos.x, snappedPos.y, 6, 0, Math.PI * 2);
             ctx.fill();
         }
 
