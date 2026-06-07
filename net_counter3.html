@@ -696,7 +696,15 @@ function detectAngles(skeletonMat){
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(src, 0, 0);
 
-        // 🟥 デバッグ表示：Hullが正しく網全体を囲むかを確認するための赤線を描画
+        // ========================================================
+        // 🎯 1. まず Hull（赤枠）を計算する
+        // ========================================================
+        const survivedPoints = crossPoints.filter(p => p.isSurvived);
+        const hull = convexHull(survivedPoints); // ここで定義！
+
+        // ========================================================
+        // 🎯 2. 🟥 デバッグ表示：Hullの赤線を描画
+        // ========================================================
         if (hull && hull.length > 0) {
             ctx.strokeStyle = "red";
             ctx.lineWidth = 3;
@@ -710,40 +718,25 @@ function detectAngles(skeletonMat){
         }
 
         // ========================================================
-        // 🎯 Part 13: 3段構えの厳格フィルタリング描画
+        // 🎯 3. この後で pointMap 作成 → knotScore 計算 → フィルタリング描画
         // ========================================================
-
-        // ① Hullを一度だけ計算する（ここで定義！）
-        const survivedPoints = crossPoints.filter(p => p.isSurvived);
-        const hull = convexHull(survivedPoints);
-
-        // ② pointMap を作成
         const pointMap = new Map();
         for (const p of crossPoints) {
             pointMap.set(`${p.i},${p.j}`, p);
         }
 
-        // ③ knotScore を計算
         for (const p of crossPoints) {
             p.knotScore = knotScore(p, pointMap);
         }
 
-        // ④ 描画ループ：フィルタ条件を少し緩和して、まずは点が出るか確認
         for (const p of crossPoints) {
-            
-            // マスク処理（外周ポリゴンの内側か）
+            // ここで hull を使う（定義済みなのでエラーにならない）
             if (!pointInPolygon(p.x, p.y, hull)) continue;
-
-            // wireScore（閾値を少し下げてみる）
+            
             if (p.wireScore < 10) continue;
-
-            // knotScore（まずは「3」にして復活させる）
             if (p.knotScore < 3) continue;
-
-            // 千鳥配置
             if (((p.i + p.j) & 1) !== 0) continue;
 
-            // 🟡 描画
             ctx.fillStyle = "#FFD400";
             ctx.beginPath();
             ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
