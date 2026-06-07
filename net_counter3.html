@@ -717,30 +717,43 @@ function detectAngles(skeletonMat){
         }
 
         // ========================================================
-        // 🎯 Part12-4: Hullの「内側」だけを描画するマスク処理の完成！
+        // 🎯 Part 13: 3段構えの厳格フィルタリング描画
         // ========================================================
+        
+        // ① 先に hull を計算しておく
+        const survivedPoints = crossPoints.filter(p => p.isSurvived);
+        const hull = convexHull(survivedPoints);
+
+        // ② pointMap を作成
+        const pointMap = new Map();
+        for (const p of crossPoints) {
+            pointMap.set(`${p.i},${p.j}`, p);
+        }
+
+        // ③ knotScore を計算
+        for (const p of crossPoints) {
+            p.knotScore = knotScore(p, pointMap);
+        }
+
+        // ④ 描画ループ：3段構えのフィルタリング
         for (const p of crossPoints) {
             
-            // 🌟 【ChatGPTの指示】Hull（赤枠）の内部にあるか判定し、外側なら即カット！
-            if (!pointInPolygon(p.x, p.y, hull)) {
-                continue;
-            }
+            // マスク処理（外周ポリゴンの内側か）
+            if (!pointInPolygon(p.x, p.y, hull)) continue;
 
-            // 🌟 近くにワイヤがない場所も引き続きカット
-            if (p.wireScore < 20) {
-                continue;
-            }
+            // wireScore（ワイヤの存在量）
+            if (p.wireScore < 15) continue;
 
-            // 🟡 最終条件をクリアした完璧な点だけをゴールドで描画
+            // knotScore（格子整合性）
+            if (p.knotScore < 4) continue;
+
+            // 千鳥配置（位相：もしドット位置がズレていたらこの「1」を「0」に変える）
+            if (((p.i + p.j) & 1) !== 0) continue;
+
+            // 🟡 最終条件をクリアした点だけを描画
             ctx.fillStyle = "#FFD400";
             ctx.beginPath();
-            ctx.arc(
-                p.x,
-                p.y,
-                5, 
-                0,
-                Math.PI * 2
-            );
+            ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
             ctx.fill();
         }
 
@@ -1653,6 +1666,29 @@ function pointInPolygon(x,y,poly)
     }
 
     return inside;
+}
+
+function knotScore(p, pointMap)
+{
+    let score = 0;
+
+    const neighbors =
+    [
+        `${p.i+1},${p.j}`,
+        `${p.i-1},${p.j}`,
+        `${p.i},${p.j+1}`,
+        `${p.i},${p.j-1}`
+    ];
+
+    for(const key of neighbors)
+    {
+        if(pointMap.has(key))
+        {
+            score++;
+        }
+    }
+
+    return score;
 }
     
 </script>
