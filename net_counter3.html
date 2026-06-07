@@ -733,10 +733,14 @@ function detectAngles(skeletonMat){
         // ========================================================
         // 🎯 幾何格子逆算・強制補間ロジック（描画部の丸ごと置換）
         // ========================================================
-        const thetaA = 32;
-        const thetaB = 148;
-        const pitchA = 23;
-        const pitchB = 23;
+        // ========================================================
+        // 🎯 【完全自動版】幾何格子逆算・強制補間ロジック
+        // ========================================================
+        // 固定値（32や23）を廃止し、上の方の処理で自動計算された結果をそのまま流し込む！
+        const thetaA = bestGrid.thetaA;
+        const thetaB = bestGrid.thetaB;
+        const pitchA = bestGrid.pitchA;
+        const pitchB = bestGrid.pitchB;
 
         // 1. 基準となる格子の原点を逆算
         const origin = estimateGridOrigin(
