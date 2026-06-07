@@ -712,8 +712,8 @@ function detectAngles(skeletonMat){
         // ========================================================
         // 🎯 Part 13: 3段構えの厳格フィルタリング描画
         // ========================================================
-        
-        // ① 先に hull を計算しておく
+
+        // ① Hullを一度だけ計算する（ここで定義！）
         const survivedPoints = crossPoints.filter(p => p.isSurvived);
         const hull = convexHull(survivedPoints);
 
@@ -728,24 +728,22 @@ function detectAngles(skeletonMat){
             p.knotScore = knotScore(p, pointMap);
         }
 
-        console.log("総点数:", crossPoints.length);
-        
-        // ④ 描画ループ：3段構えのフィルタリング
+        // ④ 描画ループ：フィルタ条件を少し緩和して、まずは点が出るか確認
         for (const p of crossPoints) {
             
             // マスク処理（外周ポリゴンの内側か）
             if (!pointInPolygon(p.x, p.y, hull)) continue;
 
-            // wireScore（ワイヤの存在量）
+            // wireScore（閾値を少し下げてみる）
             if (p.wireScore < 10) continue;
 
-            // knotScore（格子整合性）
+            // knotScore（まずは「3」にして復活させる）
             if (p.knotScore < 3) continue;
 
-            // 千鳥配置（位相：もしドット位置がズレていたらこの「1」を「0」に変える）
+            // 千鳥配置
             if (((p.i + p.j) & 1) !== 0) continue;
 
-            // 🟡 最終条件をクリアした点だけを描画
+            // 🟡 描画
             ctx.fillStyle = "#FFD400";
             ctx.beginPath();
             ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
