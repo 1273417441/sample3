@@ -697,7 +697,28 @@ function detectAngles(skeletonMat){
         ctx.drawImage(src, 0, 0);
 
         // ========================================================
-        // 🎯 境界・選別ステップ3: 描画ループを「ワイヤ境界フィルター」へ！
+        // 🎯 Part12-3: まず最初に、survived点群から Hull（外周）を作成して赤線を描画！
+        // （※ループの外側で、網の輪郭線を1回だけ描きます）
+        // ========================================================
+        const survivedPoints = crossPoints.filter(p => p.isSurvived);
+        const hull = convexHull(survivedPoints);
+
+        // 🟥 デバッグ表示：Hullが正しく網全体を囲むかを確認するための赤線を描画
+        if (hull && hull.length > 0) {
+            ctx.strokeStyle = "red";
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(hull[0].x, hull[0].y);
+            for (let i = 1; i < hull.length; i++) {
+                ctx.lineTo(hull[i].x, hull[i].y);
+            }
+            ctx.closePath();
+            ctx.stroke();
+        }
+
+
+        // ========================================================
+        // 🎯 境界・選別ステップ3: ここからドットを描画するループ
         // ========================================================
         for (const p of crossPoints) {
             
@@ -707,7 +728,6 @@ function detectAngles(skeletonMat){
             // }
 
             // 🌟 【ChatGPTの指示】近くに本物のワイヤがない完全背景なら、描画せずにカット！
-            // これにより、網の物理的な外周のフチ（包絡線）に沿って綺麗に切り抜かれます。
             if (p.wireScore < 20) {
                 continue;
             }
@@ -1534,6 +1554,106 @@ function wireScore(x,y,skeletonMat)
     }
 
     return count;
+}
+
+function cross(o, a, b)
+{
+    return (
+        (a.x - o.x) * (b.y - o.y) -
+        (a.y - o.y) * (b.x - o.x)
+    );
+}
+
+function convexHull(points)
+{
+    if(points.length < 3)
+        return points;
+
+    const pts =
+        [...points].sort(
+            (p1,p2)=>
+                p1.x===p2.x
+                ? p1.y-p2.y
+                : p1.x-p2.x
+        );
+
+    const lower = [];
+
+    for(const p of pts)
+    {
+        while(
+            lower.length >= 2 &&
+            cross(
+                lower[lower.length-2],
+                lower[lower.length-1],
+                p
+            ) <= 0
+        )
+        {
+            lower.pop();
+        }
+
+        lower.push(p);
+    }
+
+    const upper = [];
+
+    for(let i=pts.length-1;i>=0;i--)
+    {
+        const p = pts[i];
+
+        while(
+            upper.length >= 2 &&
+            cross(
+                upper[upper.length-2],
+                upper[upper.length-1],
+                p
+            ) <= 0
+        )
+        {
+            upper.pop();
+        }
+
+        upper.push(p);
+    }
+
+    upper.pop();
+    lower.pop();
+
+    return lower.concat(upper);
+}
+
+function pointInPolygon(x,y,poly)
+{
+    let inside = false;
+
+    for(
+        let i=0,j=poly.length-1;
+        i<poly.length;
+        j=i++
+    )
+    {
+        const xi = poly[i].x;
+        const yi = poly[i].y;
+
+        const xj = poly[j].x;
+        const yj = poly[j].y;
+
+        const intersect =
+            ((yi > y)!==(yj > y))
+            &&
+            (
+                x <
+                (xj-xi)*(y-yi)/(yj-yi)+xi
+            );
+
+        if(intersect)
+        {
+            inside = !inside;
+        }
+    }
+
+    return inside;
 }
     
 </script>
