@@ -696,13 +696,6 @@ function detectAngles(skeletonMat){
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(src, 0, 0);
 
-        // ========================================================
-        // 🎯 Part12-3: まず最初に、survived点群から Hull（外周）を作成して赤線を描画！
-        // （※ループの外側で、網の輪郭線を1回だけ描きます）
-        // ========================================================
-        const survivedPoints = crossPoints.filter(p => p.isSurvived);
-        const hull = convexHull(survivedPoints);
-
         // 🟥 デバッグ表示：Hullが正しく網全体を囲むかを確認するための赤線を描画
         if (hull && hull.length > 0) {
             ctx.strokeStyle = "red";
