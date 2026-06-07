@@ -731,26 +731,22 @@ function detectAngles(skeletonMat){
         }
 
         // ========================================================
-        // 🎯 新しいセル単位での代表点選別ロジック（幾何学特徴アップグレード版）
+        // 🎯 究極のシンプル版：規則格子を信じるセル代表点選別
         // ========================================================
         const cellMap = new Map();
 
         for (const p of crossPoints) {
-            // 1. 範囲・最低限の足切り
+            // 1. 最低限の枠内判定と、網のルール（千鳥配置）だけを残す
             if (!pointInPolygon(p.x, p.y, hull)) continue;
             if (((p.i + p.j) & 1) !== 0) continue; // 千鳥配置チェック
             
-            // 🌟 追加：新しく作った関数で「形（幾何学特徴）」の点数を計算する
-            const jScore = evaluateJunction(p.x, p.y, skeletonMat);
-
-            // 2. セルの固有キーを生成
             const cellKey = `${p.i},${p.j}`;
             
-            // 3. 複合スコアの算出（幾何学スコアを主役に、元のスコアも少しブレンド）
-            // これにより、輝度（wireScore）への依存度が激減します
-            const currentScore = (jScore * 20) + (p.knotScore * 10) + (p.wireScore * 0.01); 
+            // 2. スコアはシンプルに「knotScore」をメインにする
+            // wireScoreなどの細かい計算は一切排除
+            const currentScore = p.knotScore; 
 
-            // セル内にまだ点がない、あるいは今回の点の方がスコアが高いなら入れ替える
+            // セル内で一番マシな（knotScoreが高い）候補を1つだけ選ぶ
             if (!cellMap.has(cellKey) || currentScore > cellMap.get(cellKey).score) {
                 cellMap.set(cellKey, {
                     score: currentScore,
@@ -762,9 +758,9 @@ function detectAngles(skeletonMat){
             }
         }
 
-        // B. 溜まった代表点だけを物理的な交点へ吸着させつつ描画する
+        // B. 選ばれた1セル1点の代表点を描画する（画像への補正は10%だけ）
         for (const data of cellMap.values()) {
-            // 最後に「物理的なワイヤの中心」へ吸着
+            // 最後にほんの少しだけ実際のワイヤに吸着（画像補正10%）
             const snapped = findLocalMaxBrightness(data.x, data.y, skeletonMat);
             
             ctx.fillStyle = "#FFD400";
