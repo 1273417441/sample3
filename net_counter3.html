@@ -731,24 +731,24 @@ function detectAngles(skeletonMat){
         }
 
         // ========================================================
-        // 🎯 新しいセル単位での代表点選別ロジック（重複排除と1セル1点の保証）
+        // 🎯 新しいセル単位での代表点選別ロジック（幾何学特徴アップグレード版）
         // ========================================================
-        // A. セルごとの代表点マップを作成
         const cellMap = new Map();
 
         for (const p of crossPoints) {
-            // 1. 範囲・構造フィルタリング（前処理）
+            // 1. 範囲・最低限の足切り
             if (!pointInPolygon(p.x, p.y, hull)) continue;
-            if (p.wireScore < 20) continue;
-            if (p.knotScore < 8) continue;
-            if (isLinearConnection(p, pointMap)) continue;
             if (((p.i + p.j) & 1) !== 0) continue; // 千鳥配置チェック
             
+            // 🌟 追加：新しく作った関数で「形（幾何学特徴）」の点数を計算する
+            const jScore = evaluateJunction(p.x, p.y, skeletonMat);
+
             // 2. セルの固有キーを生成
             const cellKey = `${p.i},${p.j}`;
             
-            // 3. 複合スコアの算出（knotScoreを最優先、線上の点ノイズに負けないように重み付け）
-            const currentScore = (p.knotScore * 10) + (p.wireScore * 0.1); 
+            // 3. 複合スコアの算出（幾何学スコアを主役に、元のスコアも少しブレンド）
+            // これにより、輝度（wireScore）への依存度が激減します
+            const currentScore = (jScore * 20) + (p.knotScore * 10) + (p.wireScore * 0.01); 
 
             // セル内にまだ点がない、あるいは今回の点の方がスコアが高いなら入れ替える
             if (!cellMap.has(cellKey) || currentScore > cellMap.get(cellKey).score) {
@@ -1732,6 +1732,64 @@ function findLocalMaxBrightness(x, y, mat) {
         }
     }
     return { x: bestX, y: bestY };
+}
+
+// 🚀 幾何学特徴（接続数と方向分散）を計算する関数
+function evaluateJunction(x, y, mat) {
+    let degree = 0;
+    const directions = []; // 線の方向（角度）を記録する配列
+
+    const range = 2; // 周囲2ピクセル（5x5の窓）を調査
+    const cx = Math.floor(x);
+    const cy = Math.floor(y);
+
+    for (let dy = -range; dy <= range; dy++) {
+        for (let dx = -range; dx <= range; dx++) {
+            if (dx === 0 && dy === 0) continue; // 中心はスキップ
+
+            const px = cx + dx;
+            const py = cy + dy;
+
+            if (px < 0 || px >= mat.cols || py < 0 || py >= mat.rows) continue;
+
+            // スケルトン画像（白線が255、背景が0とする）
+            const val = mat.data[py * mat.cols + px];
+            if (val > 128) { // 白い画素（線）を見つけたら
+                degree++;
+                // 中心からの角度（ラジアン）を計算して保存
+                const angle = Math.atan2(dy, dx);
+                directions.push(angle);
+            }
+        }
+    }
+
+    // 方向の広がり（angleSpread）を評価
+    // 単一の線上なら角度の差が「ほぼ0」か「180度（反転）」にしかならない。
+    // 交点なら、90度や違う角度の線が混ざるため、角度のバラつき（分散）が大きくなる
+    let angleSpreadScore = 0;
+    if (directions.length >= 3) {
+        let maxDiff = 0;
+        for (let i = 0; i < directions.length; i++) {
+            for (let j = i + 1; j < directions.length; j++) {
+                let diff = Math.abs(directions[i] - directions[j]);
+                if (diff > Math.PI) diff = Math.PI * 2 - diff; // 回り込み補正
+                if (diff > maxDiff) maxDiff = diff;
+            }
+        }
+        // 最も離れた線の角度の差が、直角（PI/2）などに近ければ高得点
+        if (maxDiff > Math.PI / 4) { 
+            angleSpreadScore = 10; 
+        }
+    }
+
+    // degreeScore: 線の集まり具合。交点は周囲に白画素が多く集まる（ただし多すぎてもノイズ）
+    // 理想的な交点付近であれば高いスコアを与える
+    let degreeScore = 0;
+    if (degree >= 3 && degree <= 8) {
+        degreeScore = 15;
+    }
+
+    return degreeScore + angleSpreadScore; // これが junctionScore になる
 }
     
 </script>
