@@ -782,11 +782,13 @@ function detectAngles(skeletonMat){
             }
         }
 
-        // 3. 最終吸着と描画
+        // ========================================================
+        // 3. 最終吸着と描画（右下の検出漏れ完全救済版）
+        // ========================================================
         ctx.fillStyle = "#FFD400";
 
         for (const p of theoreticalPoints) {
-            // 理論上の点を、周辺7pxの範囲で実際のワイヤ中心へ吸着
+            // 理論上の点を、周辺7pxの範囲で実際のワイヤ中心へ吸着させてみる
             const snapped = findLocalMaxBrightness(
                 p.x,
                 p.y,
@@ -794,21 +796,32 @@ function detectAngles(skeletonMat){
                 7
             );
 
-            if (!snapped) continue;
+            let drawX = p.x;
+            let drawY = p.y;
 
-            const py = Math.floor(snapped.y);
-            const px = Math.floor(snapped.x);
-            
-            if (px < 0 || px >= skeletonMat.cols || py < 0 || py >= skeletonMat.rows) continue;
+            if (snapped) {
+                const py = Math.floor(snapped.y);
+                const px = Math.floor(snapped.x);
+                
+                if (px >= 0 && px < skeletonMat.cols && py >= 0 && py < skeletonMat.rows) {
+                    const actualVal = skeletonMat.data[py * skeletonMat.cols + px];
+                    
+                    // 🌟 修正ポイント：もし吸着先がちゃんと白線（>0）なら、その位置を採用する
+                    if (actualVal > 0) {
+                        drawX = snapped.x;
+                        drawY = snapped.y;
+                    }
+                    // もし黒（<=0）なら、吸着させずに「理論上の座標（p.x, p.y）」をそのまま使う！
+                    // これにより、右下の掠れたエリアも格子点で100%強制補間されます。
+                }
+            }
 
-            const actualVal = skeletonMat.data[py * skeletonMat.cols + px];
-            if (actualVal <= 0) continue; // 黒い場所なら描画しない
-
+            // 最終描画（絶対にスキップしない）
             ctx.beginPath();
             ctx.arc(
-                snapped.x,
-                snapped.y,
-                8, // 🔴 ドットの半径
+                drawX,
+                drawY,
+                8, // ドットサイズ5
                 0,
                 Math.PI * 2
             );
