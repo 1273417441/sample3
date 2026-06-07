@@ -658,24 +658,27 @@ function detectAngles(skeletonMat){
         ctx.drawImage(src, 0, 0);
 
         // ========================================================
-        // 🎯 Part11ステップ1（修正版）: junctionScoreで一本道だけを綺麗にスルー！
+        // 🎯 視覚化実験版: 結び目は【黄色】、一本道・外挿は【赤色】に塗り分ける！
         // ========================================================
         for (const p of crossPoints) {
             
-            // 1. まずはMLSで滑らかな理想しなり座標を計算（これをベースにします）
+            // 1. まずはMLSで滑らかな理想しなり座標を計算
             const warp = gridWarpMLS(p.i, p.j, survived);
             let drawX = p.x + warp.dx;
             let drawY = p.y + warp.dy;
+
+            // 描画する色を決める変数（初期値は赤）
+            let dotColor = "#FF0000"; // 🔴 一本道や外挿点は「赤」
 
             // 2. この格子点が合格点（survivedMapに存在する真の交点）かどうかを調べます
             const isSurvived = survivedMap[`${p.i}_${p.j}`];
 
             if (isSurvived) {
-                // 【YES：中央部】実網のエリアなので、まずは骨組みに仮吸着させてみる
+                // 【YES：中央部】実網のエリアなので、骨組みに仮吸着
                 const currentPt = { x: drawX, y: drawY };
                 const snapped = snapPointToSkeleton(currentPt, skeletonMat, 15);
 
-                // 🌟 ここで「真の交差点（5以上）」かチェック！
+                // 🌟 ここで「真の交差点（5以上）」かチェック
                 if (junctionScore(snapped.x, snapped.y, skeletonMat) >= 5) {
                     // 交差点なら合格！お団子のど真ん中へ強力吸着
                     const center = knotCenter(
@@ -685,17 +688,13 @@ function detectAngles(skeletonMat){
                     );
                     drawX = center.x;
                     drawY = center.y;
-                } else {
-                    // ➔【ここを修正】交差点じゃない（一本道）なら、
-                    // 変に吸着させず、1で計算した「MLSの理想座標」のまま真っ直ぐ描画させる！
+                    
+                    dotColor = "#FFD400"; // 🟡 真の結び目だけを「ゴールド（黄色）」にする！
                 }
-                
-            } else {
-                // 【NO：外側エリア】外挿点なので、MLSの美しいしなり座標のまま維持
             }
 
-            // 🟡 確定した座標を、鮮やかなゴールド（#FFD400）で描画
-            ctx.fillStyle = "#FFD400";
+            // 🎨 判定された色でドットを描画
+            ctx.fillStyle = dotColor;
             ctx.beginPath();
             ctx.arc(
                 drawX,
