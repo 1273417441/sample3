@@ -650,7 +650,7 @@ function detectAngles(skeletonMat){
         const { survived, rejected, survivedMap } = snapGridPoints(scoredPoints, skeletonMat);
 
         // ========================================================
-        // 🎯 最終仕上げステップ1: 生成側で新フラグ「bg」をしっかり記憶！
+        // 🎯 境界・選別ステップ2: 生成側で wireScore を計算して記憶！
         // ========================================================
         const crossPoints = [];
         for (const p of crossPointsRaw) {
@@ -660,17 +660,14 @@ function detectAngles(skeletonMat){
 
             const isSurvivedFlag = !!survivedMap[`${p.i}_${p.j}`];
 
-            // 骨組みに仮吸着させて、各種スコアを計算
             const currentPt = { x: finalX, y: finalY };
             const snapped = snapPointToSkeleton(currentPt, skeletonMat, 15);
             
             const score = junctionScore(snapped.x, snapped.y, skeletonMat);
             
-            // 🌟【ChatGPTの指示】完全背景を判定する新しいスコアを計測！
-            const bgScore = backgroundScore(snapped.x, snapped.y, skeletonMat);
+            // 🌟【ChatGPTの指示】新センサーで周辺のワイヤ存在量を計測！
+            const ws = wireScore(finalX, finalY, skeletonMat);
 
-            // junctionScoreは「削除判定」から「吸着品質フラグ」へ降格！
-            // 5以上なら中心へ吸着。届かなくてもMLSの理想座標のまま「その場に残す（補間）」
             const isJunctionFlag = (score >= 5);
             if (isSurvivedFlag && isJunctionFlag) {
                 const center = knotCenter(snapped.x, snapped.y, skeletonMat);
@@ -678,7 +675,7 @@ function detectAngles(skeletonMat){
                 finalY = center.y;
             }
 
-            // ChatGPTの指定通り、データに「bg」を追加して登録！
+            // ChatGPTの指定通り、データに「wireScore: ws」を詰め込んで登録！
             crossPoints.push({
                 x: finalX,
                 y: finalY,
@@ -686,7 +683,7 @@ function detectAngles(skeletonMat){
                 j: p.j,
                 isSurvived: isSurvivedFlag,
                 isJunction: isJunctionFlag,
-                bg: bgScore // 🌟 新しく追加
+                wireScore: ws // 🌟 新しく追加
             });
         }
 
@@ -700,27 +697,28 @@ function detectAngles(skeletonMat){
         ctx.drawImage(src, 0, 0);
 
         // ========================================================
-        // 🎯 最終仕上げステップ2: 描画ループを「完全背景除外ルール」へ置換！
+        // 🎯 境界・選別ステップ3: 描画ループを「ワイヤ境界フィルター」へ！
         // ========================================================
         for (const p of crossPoints) {
             
-            // 🌟 千鳥配置（1個飛ばし間引き）
-            if (((p.i + p.j) & 1) !== 0) {
+            // 🌟 【ChatGPTの指示】千鳥配置（1個飛ばし）は原因究明のため「一旦保留」
+            // if (((p.i + p.j) & 1) !== 0) {
+            //     continue;
+            // }
+
+            // 🌟 【ChatGPTの指示】近くに本物のワイヤがない完全背景なら、描画せずにカット！
+            // これにより、網の物理的な外周のフチ（包絡線）に沿って綺麗に切り抜かれます。
+            if (p.wireScore < 20) {
                 continue;
             }
 
-            // 🌟【ChatGPTの指示】完全背景（スコアが8未満）なら、描画せずにスキップして消す！
-            if (p.bg < 8) {
-                continue;
-            }
-
-            // 🟡 目標PNGと同じゴールド（#FFD400）で、完璧に補間された点を出力
+            // 🟡 フィルターを突破した「正しい集合の候補」をすべてゴールドで描画
             ctx.fillStyle = "#FFD400";
             ctx.beginPath();
             ctx.arc(
                 p.x,
                 p.y,
-                5, // ドットの大きさ
+                5, 
                 0,
                 Math.PI * 2
             );
@@ -1490,6 +1488,44 @@ function backgroundScore(x,y,skeletonMat)
 
             if(
                 skeletonMat.ucharPtr(yy,xx)[0] > 0
+            )
+            {
+                count++;
+            }
+        }
+    }
+
+    return count;
+}
+
+function wireScore(x,y,skeletonMat)
+{
+    let count = 0;
+
+    const r = 10;
+
+    for(let dy=-r; dy<=r; dy++)
+    {
+        for(let dx=-r; dx<=r; dx++)
+        {
+            const d =
+                Math.sqrt(dx*dx+dy*dy);
+
+            if(d > r) continue;
+
+            const xx = Math.round(x+dx);
+            const yy = Math.round(y+dy);
+
+            if(xx<0 || yy<0 ||
+               xx>=skeletonMat.cols ||
+               yy>=skeletonMat.rows)
+                continue;
+
+            if(
+                skeletonMat.ucharPtr(
+                    yy,
+                    xx
+                )[0] > 0
             )
             {
                 count++;
