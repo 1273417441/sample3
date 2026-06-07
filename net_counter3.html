@@ -632,25 +632,54 @@ function detectAngles(skeletonMat){
         );
 
         // ========================================================
-        // 🎯 交点候補の厳格化: 本当にクロスしている結び目だけを抽出！
+        // 🎯 Part11-Final(1): 生成側で合格マーク(isSurvived)をしっかり記憶！【完全版】
         // ========================================================
-        const crossPoints = buildCrossPoints(idealA, idealB);
+        const crossPointsRaw = buildCrossPoints(idealA, idealB);
 
-        // 🌟 【ChatGPTの指示】真の交差点だけを絞り込んで次のステップへ渡します
+        // 真の交差点だけを絞り込む
         const realJunctionPoints = [];
-        for (const p of crossPoints) {
-            // 格子点をまずは骨組み（スケルトン）に仮吸着させてから、そこが交差点かチェックします
+        for (const p of crossPointsRaw) {
             const snapped = snapPointToSkeleton(p, skeletonMat, 15);
-            
             if (isRealJunction(snapped.x, snapped.y, skeletonMat)) {
                 realJunctionPoints.push(p);
             }
         }
 
-        // 絞り込んだ「本当の結び目候補」だけで、スコア計算と合格判定（MLSの土台）を行います
+        // スコア計算と合格判定（ここで土台を作ります）
         const scoredPoints = scoreGridPoints(realJunctionPoints, skeletonMat);
         const { survived, rejected, survivedMap } = snapGridPoints(scoredPoints, skeletonMat);
 
+        // 🌟 すべての格子点に MLS計算 と isSurvivedフラグ を持たせて最終リストを作る
+        const crossPoints = [];
+        for (const p of crossPointsRaw) {
+            const warp = gridWarpMLS(p.i, p.j, survived);
+            let finalX = p.x + warp.dx;
+            let finalY = p.y + warp.dy;
+
+            const isSurvivedFlag = !!survivedMap[`${p.i}_${p.j}`];
+
+            // 実網エリアならお団子（結び目）の中心へ強力吸着
+            if (isSurvivedFlag) {
+                const currentPt = { x: finalX, y: finalY };
+                const snapped = snapPointToSkeleton(currentPt, skeletonMat, 15);
+                const center = knotCenter(snapped.x, snapped.y, skeletonMat);
+                finalX = center.x;
+                finalY = center.y;
+            }
+
+            // ChatGPTの指定通り、5つのデータをすべて詰め込んで登録！
+            crossPoints.push({
+                x: finalX,
+                y: finalY,
+                i: p.i,
+                j: p.j,
+                isSurvived: isSurvivedFlag
+            });
+        }
+
+        // ✨ 重複していた scoredPoints と survivedMap の2行はここにありましたが綺麗に削除しました！
+
+        // ここから描画の準備へ繋がります
         const canvas = document.getElementById("gridCanvas");
         const ctx = canvas.getContext("2d");
         const src = document.getElementById("srcCanvas");
@@ -658,41 +687,27 @@ function detectAngles(skeletonMat){
         ctx.drawImage(src, 0, 0);
 
         // ========================================================
-        // 🎯 Part11-Final: 千鳥配置（1個飛ばし間引き）で目標PNGと完全一致へ！
+        // 🎯 Part11-Final(2): 描画ループをChatGPT指定のコードへ置換！
         // ========================================================
         for (const p of crossPoints) {
             
-            // 🌟【本命処理】縦(i)と横(j)を足して奇数になる座標は、描画をスキップ（間引き）する！
+            // 🌟【助言通り】本物の網の上（isSurvivedがtrue）だけを描画。外側はパス！
+            if (!p.isSurvived) {
+                continue;
+            }
+
+            // 🌟 千鳥配置（1個飛ばし間引き）
             if (((p.i + p.j) & 1) !== 0) {
                 continue;
             }
 
-            // 1. まずはMLSで滑らかな理想しなり座標を計算
-            const warp = gridWarpMLS(p.i, p.j, survived);
-            let drawX = p.x + warp.dx;
-            let drawY = p.y + warp.dy;
-
-            // 2. この格子点が合格エリア（survivedMap）にあるかチェック
-            const isSurvived = survivedMap[`${p.i}_${p.j}`];
-
-            if (isSurvived) {
-                // 実網のエリアなら、お団子（結び目）の中心へきれいに吸着させる
-                const currentPt = { x: drawX, y: drawY };
-                const snapped = snapPointToSkeleton(currentPt, skeletonMat, 15);
-                const center = knotCenter(snapped.x, snapped.y, skeletonMat);
-                drawX = center.x;
-                drawY = center.y;
-            } else {
-                // 外側エリアはMLSの理想座標のままきれいに流す
-            }
-
-            // 🟡 確定したすべての点を、目標PNGと同じ鮮やかなゴールド（#FFD400）で描画
+            // 🟡 ゴールド（#FFD400）で、美しい結び目だけを描画
             ctx.fillStyle = "#FFD400";
             ctx.beginPath();
             ctx.arc(
-                drawX,
-                drawY,
-                5, // 目標PNGに合わせた見やすいサイズ
+                p.x,
+                p.y,
+                5, // ドットの大きさ
                 0,
                 Math.PI * 2
             );
