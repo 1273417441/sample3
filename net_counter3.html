@@ -730,47 +730,46 @@ function detectAngles(skeletonMat){
             p.knotScore = knotScore(p, pointMap);
         }
 
-        // ④ 描画ループの前に「重複排除用リスト」を作る
-        const finalPoints = [];
-        
-        // 1. まず全点をフィルタリングして候補に入れる
+        // ========================================================
+        // 🎯 新しいセル単位での代表点選別ロジック（重複排除と1セル1点の保証）
+        // ========================================================
+        // A. セルごとの代表点マップを作成
+        const cellMap = new Map();
+
         for (const p of crossPoints) {
+            // 1. 範囲・構造フィルタリング（前処理）
             if (!pointInPolygon(p.x, p.y, hull)) continue;
             if (p.wireScore < 20) continue;
             if (p.knotScore < 8) continue;
             if (isLinearConnection(p, pointMap)) continue;
-            if (((p.i + p.j) & 1) !== 0) continue;
-        
-            finalPoints.push(p);
-        }
-        
-        // 2. 近くに点がある場合、片方を消す（重複排除）
-        const results = [];
-        const thresholdDist = 15; // ここを調整：結び目同士の最小距離（ピクセル）
-        
-        for (let i = 0; i < finalPoints.length; i++) {
-            let isDuplicate = false;
-            for (let j = 0; j < results.length; j++) {
-                const dx = finalPoints[i].x - results[j].x;
-                const dy = finalPoints[i].y - results[j].y;
-                if (Math.sqrt(dx*dx + dy*dy) < thresholdDist) {
-                    isDuplicate = true;
-                    break;
-                }
-            }
-            if (!isDuplicate) {
-                results.push(finalPoints[i]);
+            if (((p.i + p.j) & 1) !== 0) continue; // 千鳥配置チェック
+            
+            // 2. セルの固有キーを生成
+            const cellKey = `${p.i},${p.j}`;
+            
+            // 3. 複合スコアの算出（knotScoreを最優先、線上の点ノイズに負けないように重み付け）
+            const currentScore = (p.knotScore * 10) + (p.wireScore * 0.1); 
+
+            // セル内にまだ点がない、あるいは今回の点の方がスコアが高いなら入れ替える
+            if (!cellMap.has(cellKey) || currentScore > cellMap.get(cellKey).score) {
+                cellMap.set(cellKey, {
+                    score: currentScore,
+                    x: p.x,
+                    y: p.y,
+                    i: p.i,
+                    j: p.j
+                });
             }
         }
-        
-        // 3. 重複がない状態の results だけを描画する
-        for (const p of results) {
-            // 吸着処理（先ほどの磁石ロジック）
-            const snappedPos = findLocalMaxBrightness(p.x, p.y, skeletonMat);
+
+        // B. 溜まった代表点だけを物理的な交点へ吸着させつつ描画する
+        for (const data of cellMap.values()) {
+            // 最後に「物理的なワイヤの中心」へ吸着
+            const snapped = findLocalMaxBrightness(data.x, data.y, skeletonMat);
             
             ctx.fillStyle = "#FFD400";
             ctx.beginPath();
-            ctx.arc(snappedPos.x, snappedPos.y, 6, 0, Math.PI * 2);
+            ctx.arc(snapped.x, snapped.y, 6, 0, Math.PI * 2);
             ctx.fill();
         }
 
@@ -1714,18 +1713,17 @@ function findLocalMaxBrightness(x, y, mat) {
     let bestX = x;
     let bestY = y;
     let maxVal = -1;
-    const range = 5; // 探す範囲（中心から±5ピクセル）
+    const range = 5; // ズレが大きい場合はここを 8 や 10 に広げてください
 
     for (let dy = -range; dy <= range; dy++) {
         for (let dx = -range; dx <= range; dx++) {
             const px = Math.floor(x + dx);
             const py = Math.floor(y + dy);
             
-            // 範囲外チェック
             if (px < 0 || px >= mat.cols || py < 0 || py >= mat.rows) continue;
 
-            // mat.ucharAt(y, x) は OpenCV.js のアクセス例です
-            const val = mat.ucharAt(py, px); 
+            // OpenCV.jsのデータ配列から直接輝度（0か255など）を取得
+            const val = mat.data[py * mat.cols + px]; 
             if (val > maxVal) {
                 maxVal = val;
                 bestX = px;
