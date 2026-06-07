@@ -734,8 +734,8 @@ function detectAngles(skeletonMat){
             // ここで hull を使う（定義済みなのでエラーにならない）
             if (!pointInPolygon(p.x, p.y, hull)) continue;
             
-            if (p.wireScore < 15) continue;
-            if (p.knotScore < 4) continue;
+            if (p.wireScore < 20) continue;
+            if (p.knotScore < 6) continue;
             if (((p.i + p.j) & 1) !== 0) continue;
 
             ctx.fillStyle = "#FFD400";
@@ -1655,26 +1655,19 @@ function pointInPolygon(x,y,poly)
     return inside;
 }
 
-function knotScore(p, pointMap)
-{
+function knotScore(p, pointMap) {
     let score = 0;
-
-    const neighbors =
-    [
-        `${p.i+1},${p.j}`,
-        `${p.i-1},${p.j}`,
-        `${p.i},${p.j+1}`,
-        `${p.i},${p.j-1}`
+    // 上下左右 ＋ 斜め4方向も見る（網の結び目としてより厳格に）
+    const neighbors = [
+        [0, 1], [0, -1], [1, 0], [-1, 0], 
+        [1, 1], [1, -1], [-1, 1], [-1, -1]
     ];
-
-    for(const key of neighbors)
-    {
-        if(pointMap.has(key))
-        {
+    
+    for (const [di, dj] of neighbors) {
+        if (pointMap.has(`${p.i + di},${p.j + dj}`)) {
             score++;
         }
     }
-
     return score;
 }
     
